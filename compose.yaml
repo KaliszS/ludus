@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: ludus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ludus
+      POSTGRES_PASSWORD: ludus
+      POSTGRES_DB: ludus
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ludus -d ludus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
