@@ -1,0 +1,14 @@
+DROP TABLE task_relations;
+DROP TABLE comments;
+DROP TABLE task_labels;
+DROP TABLE labels;
+DROP TABLE tasks;
+DROP TABLE cycles;
+DROP TABLE milestone_members;
+DROP TABLE milestones;
+DROP TABLE project_members;
+DROP TABLE projects;
+DROP TABLE target_checkins;
+DROP TABLE targets;
+DROP TABLE workflow_states;
+DROP TABLE horizons;
