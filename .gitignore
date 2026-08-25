@@ -3,6 +3,7 @@
 !.env.example
 
 /api/target/
+/api/migrations/.diesel_lock
 
 /tui/bin/
 *.test

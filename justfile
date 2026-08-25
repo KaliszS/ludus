@@ -67,8 +67,16 @@ api-migration name:
 api-migrate:
     cd api && diesel migration run
 
-api-rollback:
-    cd api && diesel migration revert
+api-rollback n="1":
+    cd api && diesel migration revert -n {{ n }}
+
+# Roll migrations back and re-apply them, proving down.sql actually works
+api-redo n="1":
+    cd api && diesel migration redo -n {{ n }}
+
+# Which migrations are applied and which are pending
+api-migrations:
+    cd api && diesel migration list
 
 # Regenerate src/repo/schema.rs from the live database
 api-schema:
