@@ -19,8 +19,6 @@ INSERT INTO horizons (id, user_id, name, valid_days, position) VALUES
     (gen_random_uuid(), NULL, 'Soon',  30,   200),
     (gen_random_uuid(), NULL, 'Later', NULL, 300);
 
--- Teams rename states freely; category stays a closed set and is what queries
--- filter on.
 CREATE TABLE workflow_states (
     id         uuid        PRIMARY KEY,
     team_id    uuid        NULL REFERENCES teams(id) ON DELETE CASCADE,
@@ -94,7 +92,6 @@ CREATE INDEX idx_projects_target ON projects(target_id);
 
 SELECT diesel_manage_updated_at('projects');
 
--- role is 'lead' or 'member', so a project can have any number of leads.
 CREATE TABLE project_members (
     project_id uuid        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     user_id    uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -235,8 +232,6 @@ CREATE INDEX idx_comments_parent ON comments(parent_id);
 
 SELECT diesel_manage_updated_at('comments');
 
--- from_task_id / to_task_id rather than target_id, which in tasks already means
--- the life goal.
 CREATE TABLE task_relations (
     from_task_id uuid        NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     to_task_id   uuid        NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,

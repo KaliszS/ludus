@@ -40,6 +40,52 @@ diesel::table! {
 }
 
 diesel::table! {
+    goals (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        team_id -> Nullable<Uuid>,
+        project_id -> Nullable<Uuid>,
+        name -> Text,
+        description -> Text,
+        status -> Text,
+        target_date -> Nullable<Date>,
+        position -> Numeric,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+        completed_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    habit_checkins (habit_id, day) {
+        habit_id -> Uuid,
+        day -> Date,
+        times -> Int4,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    habits (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        name -> Text,
+        description -> Text,
+        weekdays -> Nullable<Array<Nullable<Int2>>>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+        archived_at -> Nullable<Timestamptz>,
+        icon -> Nullable<Text>,
+        color -> Nullable<Text>,
+        unit -> Nullable<Text>,
+        tracking -> Text,
+        position -> Numeric,
+        goal_id -> Nullable<Uuid>,
+    }
+}
+
+diesel::table! {
     horizons (id) {
         id -> Uuid,
         user_id -> Nullable<Uuid>,
@@ -97,6 +143,34 @@ diesel::table! {
 }
 
 diesel::table! {
+    plan_levels (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        name -> Text,
+        period -> Text,
+        position -> Numeric,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    plan_quotas (level_id, habit_id) {
+        level_id -> Uuid,
+        habit_id -> Uuid,
+        quota -> Numeric,
+    }
+}
+
+diesel::table! {
+    plan_tasks (level_id, task_id, period_start) {
+        level_id -> Uuid,
+        task_id -> Uuid,
+        period_start -> Date,
+    }
+}
+
+diesel::table! {
     project_members (project_id, user_id) {
         project_id -> Uuid,
         user_id -> Uuid,
@@ -113,12 +187,12 @@ diesel::table! {
         name -> Text,
         description -> Text,
         status -> Text,
-        target_id -> Nullable<Uuid>,
         target_date -> Nullable<Date>,
         position -> Numeric,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
         completed_at -> Nullable<Timestamptz>,
+        goal_id -> Nullable<Uuid>,
     }
 }
 
@@ -137,29 +211,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    target_checkins (target_id, day) {
-        target_id -> Uuid,
-        day -> Date,
-        times -> Int4,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    targets (id) {
-        id -> Uuid,
-        user_id -> Uuid,
-        name -> Text,
-        description -> Text,
-        cadence_kind -> Text,
-        cadence_period -> Nullable<Text>,
-        times_per_period -> Nullable<Int4>,
-        weekdays -> Nullable<Array<Nullable<Int2>>>,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-        completed_at -> Nullable<Timestamptz>,
-        archived_at -> Nullable<Timestamptz>,
+    task_goals (task_id, goal_id) {
+        task_id -> Uuid,
+        goal_id -> Uuid,
     }
 }
 
@@ -195,7 +249,6 @@ diesel::table! {
         project_id -> Nullable<Uuid>,
         milestone_id -> Nullable<Uuid>,
         cycle_id -> Nullable<Uuid>,
-        target_id -> Nullable<Uuid>,
         is_milestone_goal -> Bool,
         horizon_id -> Nullable<Uuid>,
         horizon_set_at -> Nullable<Timestamptz>,
@@ -258,26 +311,34 @@ diesel::joinable!(comments -> tasks (task_id));
 diesel::joinable!(comments -> users (author_id));
 diesel::joinable!(cycles -> teams (team_id));
 diesel::joinable!(device_authorizations -> users (user_id));
+diesel::joinable!(goals -> teams (team_id));
+diesel::joinable!(goals -> users (user_id));
+diesel::joinable!(habit_checkins -> habits (habit_id));
+diesel::joinable!(habits -> goals (goal_id));
+diesel::joinable!(habits -> users (user_id));
 diesel::joinable!(horizons -> users (user_id));
 diesel::joinable!(labels -> teams (team_id));
 diesel::joinable!(milestone_members -> milestones (milestone_id));
 diesel::joinable!(milestone_members -> users (user_id));
 diesel::joinable!(milestones -> projects (project_id));
+diesel::joinable!(plan_levels -> users (user_id));
+diesel::joinable!(plan_quotas -> habits (habit_id));
+diesel::joinable!(plan_quotas -> plan_levels (level_id));
+diesel::joinable!(plan_tasks -> plan_levels (level_id));
+diesel::joinable!(plan_tasks -> tasks (task_id));
 diesel::joinable!(project_members -> projects (project_id));
 diesel::joinable!(project_members -> users (user_id));
-diesel::joinable!(projects -> targets (target_id));
 diesel::joinable!(projects -> teams (team_id));
 diesel::joinable!(projects -> users (creator_id));
 diesel::joinable!(sessions -> users (user_id));
-diesel::joinable!(target_checkins -> targets (target_id));
-diesel::joinable!(targets -> users (user_id));
+diesel::joinable!(task_goals -> goals (goal_id));
+diesel::joinable!(task_goals -> tasks (task_id));
 diesel::joinable!(task_labels -> labels (label_id));
 diesel::joinable!(task_labels -> tasks (task_id));
 diesel::joinable!(tasks -> cycles (cycle_id));
 diesel::joinable!(tasks -> horizons (horizon_id));
 diesel::joinable!(tasks -> milestones (milestone_id));
 diesel::joinable!(tasks -> projects (project_id));
-diesel::joinable!(tasks -> targets (target_id));
 diesel::joinable!(tasks -> teams (team_id));
 diesel::joinable!(tasks -> workflow_states (state_id));
 diesel::joinable!(team_members -> teams (team_id));
@@ -288,16 +349,21 @@ diesel::allow_tables_to_appear_in_same_query!(
     comments,
     cycles,
     device_authorizations,
+    goals,
+    habit_checkins,
+    habits,
     horizons,
     labels,
     milestone_members,
     milestones,
     oauth_states,
+    plan_levels,
+    plan_quotas,
+    plan_tasks,
     project_members,
     projects,
     sessions,
-    target_checkins,
-    targets,
+    task_goals,
     task_labels,
     task_relations,
     tasks,

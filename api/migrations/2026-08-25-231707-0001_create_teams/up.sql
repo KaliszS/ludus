@@ -1,6 +1,4 @@
--- next_seq hands out the per-team task number behind identifiers like ENG-42.
--- Creating a task bumps it with UPDATE ... RETURNING inside the insert's
--- transaction, so the row lock serialises concurrent creates.
+-- next_seq is the counter behind ENG-42; bump it with UPDATE ... RETURNING.
 CREATE TABLE teams (
     id         uuid        PRIMARY KEY,
     key        text        NOT NULL UNIQUE,

@@ -22,3 +22,5 @@ go.work.sum
 *.so
 *.dylib
 .DS_Store
+
+/.local/
