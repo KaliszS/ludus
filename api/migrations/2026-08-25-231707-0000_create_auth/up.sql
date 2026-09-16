@@ -11,9 +11,7 @@ CREATE TABLE users (
 
 SELECT diesel_manage_updated_at('users');
 
--- One row per login. Rotation moves token_hash into prev_hash; a token matching
--- prev_hash means someone replayed a spent token, so the row is deleted and the
--- session dies.
+-- A token matching prev_hash is a replayed one: delete the row, kill the session.
 CREATE TABLE sessions (
     id           uuid        PRIMARY KEY,
     user_id      uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
