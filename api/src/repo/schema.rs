@@ -49,7 +49,7 @@ diesel::table! {
         description -> Text,
         status -> Text,
         target_date -> Nullable<Date>,
-        position -> Numeric,
+        position -> Float8,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
         completed_at -> Nullable<Timestamptz>,
@@ -80,7 +80,7 @@ diesel::table! {
         color -> Nullable<Text>,
         unit -> Nullable<Text>,
         tracking -> Text,
-        position -> Numeric,
+        position -> Float8,
         goal_id -> Nullable<Uuid>,
     }
 }
@@ -91,7 +91,7 @@ diesel::table! {
         user_id -> Nullable<Uuid>,
         name -> Text,
         valid_days -> Nullable<Int4>,
-        position -> Numeric,
+        position -> Float8,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
     }
@@ -124,7 +124,7 @@ diesel::table! {
         name -> Text,
         description -> Text,
         target_date -> Nullable<Date>,
-        position -> Numeric,
+        position -> Float8,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
         completed_at -> Nullable<Timestamptz>,
@@ -148,17 +148,27 @@ diesel::table! {
         user_id -> Uuid,
         name -> Text,
         period -> Text,
-        position -> Numeric,
+        position -> Float8,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
     }
 }
 
 diesel::table! {
-    plan_quotas (level_id, habit_id) {
-        level_id -> Uuid,
+    plan_requirement_habits (requirement_id, habit_id) {
+        requirement_id -> Uuid,
         habit_id -> Uuid,
-        quota -> Numeric,
+    }
+}
+
+diesel::table! {
+    plan_requirements (id) {
+        id -> Uuid,
+        level_id -> Uuid,
+        name -> Nullable<Text>,
+        quota -> Float8,
+        measure -> Text,
+        position -> Float8,
     }
 }
 
@@ -188,7 +198,7 @@ diesel::table! {
         description -> Text,
         status -> Text,
         target_date -> Nullable<Date>,
-        position -> Numeric,
+        position -> Float8,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
         completed_at -> Nullable<Timestamptz>,
@@ -244,7 +254,7 @@ diesel::table! {
         description -> Text,
         state_id -> Uuid,
         priority -> Int2,
-        estimate -> Nullable<Numeric>,
+        estimate -> Nullable<Float8>,
         parent_id -> Nullable<Uuid>,
         project_id -> Nullable<Uuid>,
         milestone_id -> Nullable<Uuid>,
@@ -253,7 +263,7 @@ diesel::table! {
         horizon_id -> Nullable<Uuid>,
         horizon_set_at -> Nullable<Timestamptz>,
         due_date -> Nullable<Date>,
-        position -> Numeric,
+        position -> Float8,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
         completed_at -> Nullable<Timestamptz>,
@@ -301,7 +311,7 @@ diesel::table! {
         name -> Text,
         category -> Text,
         color -> Text,
-        position -> Numeric,
+        position -> Float8,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
     }
@@ -322,8 +332,9 @@ diesel::joinable!(milestone_members -> milestones (milestone_id));
 diesel::joinable!(milestone_members -> users (user_id));
 diesel::joinable!(milestones -> projects (project_id));
 diesel::joinable!(plan_levels -> users (user_id));
-diesel::joinable!(plan_quotas -> habits (habit_id));
-diesel::joinable!(plan_quotas -> plan_levels (level_id));
+diesel::joinable!(plan_requirement_habits -> habits (habit_id));
+diesel::joinable!(plan_requirement_habits -> plan_requirements (requirement_id));
+diesel::joinable!(plan_requirements -> plan_levels (level_id));
 diesel::joinable!(plan_tasks -> plan_levels (level_id));
 diesel::joinable!(plan_tasks -> tasks (task_id));
 diesel::joinable!(project_members -> projects (project_id));
@@ -358,7 +369,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     milestones,
     oauth_states,
     plan_levels,
-    plan_quotas,
+    plan_requirement_habits,
+    plan_requirements,
     plan_tasks,
     project_members,
     projects,

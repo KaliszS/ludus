@@ -1,5 +1,6 @@
 DROP TABLE plan_tasks;
-DROP TABLE plan_quotas;
+DROP TABLE plan_requirement_habits;
+DROP TABLE plan_requirements;
 DROP TABLE plan_levels;
 DROP TABLE task_goals;
 
