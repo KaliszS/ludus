@@ -4,7 +4,7 @@ CREATE TABLE horizons (
     user_id    uuid        NULL REFERENCES users(id) ON DELETE CASCADE,
     name       text        NOT NULL,
     valid_days int         NULL CHECK (valid_days IS NULL OR valid_days > 0),
-    position   numeric     NOT NULL,
+    position   float8      NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -25,7 +25,7 @@ CREATE TABLE workflow_states (
     name       text        NOT NULL,
     category   text        NOT NULL CHECK (category IN ('backlog', 'unstarted', 'started', 'completed', 'canceled')),
     color      text        NOT NULL DEFAULT '#8b8b8b',
-    position   numeric     NOT NULL,
+    position   float8      NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -80,7 +80,7 @@ CREATE TABLE projects (
     status       text        NOT NULL DEFAULT 'planned',
     target_id    uuid        NULL REFERENCES targets(id) ON DELETE SET NULL,
     target_date  date        NULL,
-    position     numeric     NOT NULL,
+    position     float8      NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT now(),
     updated_at   timestamptz NOT NULL DEFAULT now(),
     completed_at timestamptz NULL
@@ -108,7 +108,7 @@ CREATE TABLE milestones (
     name         text        NOT NULL,
     description  text        NOT NULL DEFAULT '',
     target_date  date        NULL,
-    position     numeric     NOT NULL,
+    position     float8      NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT now(),
     updated_at   timestamptz NOT NULL DEFAULT now(),
     completed_at timestamptz NULL
@@ -153,7 +153,7 @@ CREATE TABLE tasks (
     description       text        NOT NULL DEFAULT '',
     state_id          uuid        NOT NULL REFERENCES workflow_states(id),
     priority          smallint    NOT NULL DEFAULT 0 CHECK (priority BETWEEN 0 AND 4),
-    estimate          numeric     NULL,
+    estimate          float8      NULL,
     parent_id         uuid        NULL REFERENCES tasks(id) ON DELETE SET NULL,
     project_id        uuid        NULL REFERENCES projects(id) ON DELETE SET NULL,
     milestone_id      uuid        NULL REFERENCES milestones(id) ON DELETE SET NULL,
@@ -163,7 +163,7 @@ CREATE TABLE tasks (
     horizon_id        uuid        NULL REFERENCES horizons(id) ON DELETE SET NULL,
     horizon_set_at    timestamptz NULL,
     due_date          date        NULL,
-    position          numeric     NOT NULL,
+    position          float8      NOT NULL,
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now(),
     completed_at      timestamptz NULL,

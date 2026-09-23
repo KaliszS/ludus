@@ -5,23 +5,23 @@ default:
 
 # --- all services ---
 
-# Bring up the database and install GUI dependencies
-setup: db-up gui-install
-    @echo "Next: just api-migrate, then api-dev and gui-dev in separate terminals"
+# Database, migrations, stand-in user and GUI dependencies
+setup: db-up api-migrate api-seed gui-install
+    @echo "Ready. Run: just api-run  and  just gui-dev"
 
-# Everything that must pass before a commit
-check: api-check tui-check gui-check
+# Everything that must pass before a commit. tui/ has not been started.
+check: api-check gui-check
 
-fmt: api-fmt tui-fmt gui-fmt
+fmt: api-fmt gui-fmt
 
-test: api-test tui-test
+test: api-test
 
-build: api-build tui-release gui-build
+build: api-build gui-build
 
 # --- database ---
 
 db-up:
-    docker compose up -d postgres
+    docker compose up -d --wait postgres
 
 db-down:
     docker compose down
@@ -29,7 +29,7 @@ db-down:
 # Drop the database along with its data and start over
 db-reset:
     docker compose down -v
-    docker compose up -d postgres
+    docker compose up -d --wait postgres
 
 db-logs:
     docker compose logs -f postgres
@@ -66,6 +66,10 @@ api-migration name:
 
 api-migrate:
     cd api && diesel migration run
+
+# Insert the dev stand-in user that replaces auth for now
+api-seed:
+    docker compose exec -T postgres psql -q -U ludus -d ludus < api/dev_seed.sql
 
 api-rollback n="1":
     cd api && diesel migration revert -n {{ n }}

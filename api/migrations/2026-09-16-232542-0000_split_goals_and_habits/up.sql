@@ -12,7 +12,7 @@ ALTER TABLE habits
     ADD COLUMN color    text    NULL,
     ADD COLUMN unit     text    NULL,
     ADD COLUMN tracking text    NOT NULL DEFAULT 'binary',
-    ADD COLUMN position numeric NOT NULL DEFAULT 0;
+    ADD COLUMN position float8  NOT NULL DEFAULT 0;
 
 ALTER TABLE habits ALTER COLUMN position DROP DEFAULT;
 
@@ -26,7 +26,7 @@ CREATE TABLE goals (
     description  text        NOT NULL DEFAULT '',
     status       text        NOT NULL DEFAULT 'active',
     target_date  date        NULL,
-    position     numeric     NOT NULL,
+    position     float8      NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT now(),
     updated_at   timestamptz NOT NULL DEFAULT now(),
     completed_at timestamptz NULL
@@ -65,7 +65,7 @@ CREATE TABLE plan_levels (
     user_id    uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name       text        NOT NULL,
     period     text        NOT NULL CHECK (period IN ('day', 'week', 'month', 'quarter', 'year')),
-    position   numeric     NOT NULL,
+    position   float8      NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (user_id, period, name)
@@ -75,14 +75,26 @@ CREATE INDEX idx_plan_levels_user ON plan_levels(user_id);
 
 SELECT diesel_manage_updated_at('plan_levels');
 
-CREATE TABLE plan_quotas (
-    level_id uuid    NOT NULL REFERENCES plan_levels(id) ON DELETE CASCADE,
-    habit_id uuid    NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
-    quota    numeric NOT NULL CHECK (quota > 0),
-    PRIMARY KEY (level_id, habit_id)
+-- A requirement is met by its member habits taken together, so one member is an
+-- ordinary quota and several express "any N from this set".
+CREATE TABLE plan_requirements (
+    id       uuid   PRIMARY KEY,
+    level_id uuid   NOT NULL REFERENCES plan_levels(id) ON DELETE CASCADE,
+    name     text   NULL,
+    quota    float8 NOT NULL CHECK (quota > 0),
+    measure  text   NOT NULL DEFAULT 'amount' CHECK (measure IN ('amount', 'occurrences')),
+    position float8 NOT NULL
 );
 
-CREATE INDEX idx_plan_quotas_habit ON plan_quotas(habit_id);
+CREATE INDEX idx_plan_requirements_level ON plan_requirements(level_id);
+
+CREATE TABLE plan_requirement_habits (
+    requirement_id uuid NOT NULL REFERENCES plan_requirements(id) ON DELETE CASCADE,
+    habit_id       uuid NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+    PRIMARY KEY (requirement_id, habit_id)
+);
+
+CREATE INDEX idx_plan_requirement_habits_habit ON plan_requirement_habits(habit_id);
 
 -- period_start: a task commitment is one-off, so next period it is simply absent.
 CREATE TABLE plan_tasks (
