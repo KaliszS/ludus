@@ -15,7 +15,7 @@
 		{#each Array.from({ length: segments }, (_, index) => index) as index (index)}
 			<span
 				class="h-2 flex-1 rounded-full transition-all duration-500 ease-out"
-				style:background-color={index < done ? color : 'var(--color-line)'}
+				style:background-color={index < done ? color : 'var(--color-sunken)'}
 				style:transition-delay="{Math.min(index, 10) * 35}ms"
 			></span>
 		{/each}

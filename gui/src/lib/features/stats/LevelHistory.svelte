@@ -34,7 +34,7 @@
 					{@const ratio = cell && cell.total > 0 ? cell.reached / cell.total : 0}
 					<span
 						class="h-6 flex-1 overflow-hidden rounded"
-						style:background-color="var(--color-line)"
+						style:background-color="var(--color-sunken)"
 						title={cell ? `${cell.reached}/${cell.total}` : ''}
 					>
 						<span

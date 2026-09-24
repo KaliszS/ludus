@@ -59,7 +59,7 @@
 						style:background-color={day > to || day < from
 							? 'transparent'
 							: level === 0
-								? 'var(--color-line)'
+								? 'var(--color-sunken)'
 								: `color-mix(in oklab, var(--color-accent) ${level * 100}%, transparent)`}
 					></span>
 				{/each}

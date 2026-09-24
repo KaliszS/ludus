@@ -4,16 +4,22 @@
 @theme {
 	--font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
 
-	--color-canvas: light-dark(oklch(98.4% 0.004 80), oklch(15% 0.008 60));
-	--color-surface: light-dark(oklch(100% 0 0), oklch(19.5% 0.009 60));
-	--color-sunken: light-dark(oklch(96% 0.005 80), oklch(13% 0.008 60));
-	--color-line: light-dark(oklch(91% 0.006 80), oklch(26% 0.01 60));
-	--color-ink: light-dark(oklch(24% 0.012 60), oklch(96% 0.004 80));
-	--color-muted: light-dark(oklch(54% 0.012 60), oklch(64% 0.012 70));
-	--color-accent: light-dark(oklch(56% 0.152 38), oklch(72% 0.14 42));
-	--color-accent-soft: light-dark(oklch(94% 0.032 45), oklch(26% 0.055 40));
-	--color-good: light-dark(oklch(54% 0.13 152), oklch(74% 0.14 155));
-	--color-good-soft: light-dark(oklch(94% 0.04 155), oklch(25% 0.05 155));
+	/* Dark surfaces are near-neutral on purpose. The accent, the streak flame and
+	   every habit colour live in the warm 40-90 range, so a warm substrate would
+	   sit in the same hue family and swallow them. Warmth is carried by the
+	   content, not the page. */
+	--color-canvas: light-dark(oklch(95.6% 0.006 85), oklch(17.4% 0.003 68));
+	--color-surface: light-dark(oklch(100% 0 0), oklch(23.6% 0.005 68));
+	/* Tracks, filled inputs and hovers. Above the card, so it stays visible both
+	   on a card and directly on the page. */
+	--color-sunken: light-dark(oklch(92.3% 0.007 81), oklch(29.5% 0.007 68));
+	--color-line: light-dark(oklch(83.5% 0.012 80), oklch(38.9% 0.01 74));
+	--color-ink: light-dark(oklch(22.4% 0.007 67), oklch(96.8% 0.005 78));
+	--color-muted: light-dark(oklch(56.5% 0.012 77), oklch(67% 0.012 72));
+	--color-accent: light-dark(oklch(56% 0.152 38), oklch(76% 0.152 45));
+	--color-accent-soft: light-dark(oklch(94% 0.032 45), oklch(31% 0.065 40));
+	--color-good: light-dark(oklch(54% 0.13 152), oklch(78% 0.15 155));
+	--color-good-soft: light-dark(oklch(94% 0.04 155), oklch(30% 0.06 155));
 
 	--radius-card: 1.25rem;
 	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
