@@ -64,27 +64,28 @@ api-check: api-fmt api-lint api-test
 api-migration name:
     cd api && diesel migration generate {{ name }}
 
-api-migrate:
+api-migrate: && api-schema
     cd api && diesel migration run
 
 # Insert the dev stand-in user that replaces auth for now
 api-seed:
     docker compose exec -T postgres psql -q -U ludus -d ludus < api/dev_seed.sql
 
-api-rollback n="1":
+api-rollback n="1": && api-schema
     cd api && diesel migration revert -n {{ n }}
 
 # Roll migrations back and re-apply them, proving down.sql actually works
-api-redo n="1":
+api-redo n="1": && api-schema
     cd api && diesel migration redo -n {{ n }}
 
 # Which migrations are applied and which are pending
 api-migrations:
     cd api && diesel migration list
 
-# Regenerate src/repo/schema.rs from the live database
+# Regenerate both schema artifacts from the live database
 api-schema:
     cd api && diesel print-schema > src/repo/schema.rs
+    sh api/tools/dump-schema.sh
 
 api-audit:
     cd api && cargo audit

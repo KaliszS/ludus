@@ -117,7 +117,7 @@ impl Service {
     pub async fn delete_habit(&self, id: Uuid) -> AppResult<()> {
         let mut conn = self.conn().await?;
         habit::delete(&mut conn, self.current_user(), id).await?;
-        plan::delete_orphaned_requirements(&mut conn).await?;
+        plan::delete_orphaned_requirements(&mut conn, self.current_user()).await?;
         Ok(())
     }
 }
