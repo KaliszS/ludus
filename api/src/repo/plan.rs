@@ -310,13 +310,20 @@ pub async fn next_requirement_position(conn: &mut DbConn, level_id: Uuid) -> App
 }
 
 /// A habit deletion cascades to the member rows but leaves the requirement behind.
-/// One with no members can never be satisfied, so the level would be stuck.
-pub async fn delete_orphaned_requirements(conn: &mut DbConn) -> AppResult<usize> {
-    Ok(diesel::delete(plan_requirements::table.filter(
-        diesel::dsl::not(diesel::dsl::exists(plan_requirement_habits::table.filter(
-            plan_requirement_habits::requirement_id.eq(plan_requirements::id),
-        ))),
-    ))
+/// One with no members can never be satisfied, so the level would be stuck. Scoped
+/// to the owner: another account's broken requirements are not this caller's to sweep.
+pub async fn delete_orphaned_requirements(conn: &mut DbConn, user_id: Uuid) -> AppResult<usize> {
+    let owned_levels = plan_levels::table
+        .filter(plan_levels::user_id.eq(user_id))
+        .select(plan_levels::id);
+    Ok(diesel::delete(
+        plan_requirements::table
+            .filter(plan_requirements::level_id.eq_any(owned_levels))
+            .filter(diesel::dsl::not(diesel::dsl::exists(
+                plan_requirement_habits::table
+                    .filter(plan_requirement_habits::requirement_id.eq(plan_requirements::id)),
+            ))),
+    )
     .execute(conn)
     .await?)
 }

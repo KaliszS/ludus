@@ -1,0 +1,16 @@
+ALTER TABLE habits RENAME CONSTRAINT habits_pkey TO targets_pkey;
+ALTER TABLE habits RENAME CONSTRAINT habits_user_id_fkey TO targets_user_id_fkey;
+ALTER TABLE habits RENAME CONSTRAINT habits_id_not_null TO targets_id_not_null;
+ALTER TABLE habits RENAME CONSTRAINT habits_user_id_not_null TO targets_user_id_not_null;
+ALTER TABLE habits RENAME CONSTRAINT habits_name_not_null TO targets_name_not_null;
+ALTER TABLE habits RENAME CONSTRAINT habits_description_not_null TO targets_description_not_null;
+ALTER TABLE habits RENAME CONSTRAINT habits_created_at_not_null TO targets_created_at_not_null;
+ALTER TABLE habits RENAME CONSTRAINT habits_updated_at_not_null TO targets_updated_at_not_null;
+
+ALTER TABLE habit_checkins RENAME CONSTRAINT habit_checkins_times_check TO target_checkins_times_check;
+ALTER TABLE habit_checkins RENAME CONSTRAINT habit_checkins_habit_id_fkey TO target_checkins_target_id_fkey;
+ALTER TABLE habit_checkins RENAME CONSTRAINT habit_checkins_habit_id_not_null TO target_checkins_target_id_not_null;
+ALTER TABLE habit_checkins RENAME CONSTRAINT habit_checkins_day_not_null TO target_checkins_day_not_null;
+ALTER TABLE habit_checkins RENAME CONSTRAINT habit_checkins_times_not_null TO target_checkins_times_not_null;
+ALTER TABLE habit_checkins RENAME CONSTRAINT habit_checkins_created_at_not_null TO target_checkins_created_at_not_null;
+ALTER TABLE habit_checkins RENAME CONSTRAINT habit_checkins_updated_at_not_null TO target_checkins_updated_at_not_null;
