@@ -1,6 +1,6 @@
 import { authApi } from '$lib/api/endpoints';
 import { ApiError } from '$lib/api/http';
-import type { User } from '$lib/api/types';
+import type { SessionGrant, User } from '$lib/api/types';
 import { createChallenge, takeVerifier } from '$lib/auth/pkce';
 import { leave, token } from '$lib/auth/token';
 
@@ -32,7 +32,26 @@ class Session {
 	async complete(code: string) {
 		const verifier = takeVerifier();
 		if (!verifier) throw new ApiError('no_verifier', 'This sign-in was started in another tab.');
-		const grant = await authApi.redeem(code, verifier);
+		this.accept(await authApi.redeem(code, verifier));
+	}
+
+	async signInWithPassword(email: string, password: string) {
+		this.accept(await authApi.passwordLogin(email, password));
+	}
+
+	async register(email: string, password: string, name: string): Promise<'signed-in' | 'pending'> {
+		const result = await authApi.register(email, password, name);
+		if ('pending' in result) return 'pending';
+		this.accept(result);
+		return 'signed-in';
+	}
+
+	/** Every other session ends server-side; this one carries on with the new token. */
+	async changePassword(current: string | null, next: string) {
+		this.accept(await authApi.changePassword(current, next));
+	}
+
+	private accept(grant: SessionGrant) {
 		token.set(grant.token);
 		this.user = grant.user;
 	}

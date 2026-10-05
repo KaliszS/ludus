@@ -29,7 +29,8 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
 	const text = await res.text();
 	const body = text ? JSON.parse(text) : null;
 
-	if (res.status === 401) {
+	// A wrong password is a 401 too; only a dead session means leaving the page.
+	if (res.status === 401 && body?.error?.code === 'unauthenticated') {
 		token.clear();
 		leave();
 	}

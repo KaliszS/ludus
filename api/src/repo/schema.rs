@@ -303,6 +303,7 @@ diesel::table! {
         provider_id -> Text,
         email -> Text,
         created_at -> Timestamptz,
+        password_hash -> Nullable<Text>,
     }
 }
 

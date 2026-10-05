@@ -1,8 +1,10 @@
+mod cli;
 mod config;
 mod domain;
 mod error;
 mod http;
 mod oauth;
+mod password;
 mod repo;
 mod service;
 
@@ -19,17 +21,18 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::Config::from_env()?;
     let pool = repo::pool::build(&config.database_url)?;
-    let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
+    let registration = config.auth.registration;
+    let service = service::Service::new(pool, config.auth)?;
 
-    if config.auth.google.is_none() {
-        tracing::warn!("no sign-in provider configured; nobody will be able to sign in");
+    // Before binding: an admin command must work while the daemon holds the port.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if !args.is_empty() {
+        return cli::run(&args, service).await;
     }
-    tracing::info!(addr = %config.bind_addr, registration = ?config.auth.registration, "ludusd listening");
-    let app = http::router(
-        service::Service::new(pool, config.auth),
-        &config.allowed_origins,
-    );
-    axum::serve(listener, app).await?;
+
+    let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
+    tracing::info!(addr = %config.bind_addr, registration = registration.as_str(), "ludusd listening");
+    axum::serve(listener, http::router(service, &config.allowed_origins)).await?;
 
     Ok(())
 }

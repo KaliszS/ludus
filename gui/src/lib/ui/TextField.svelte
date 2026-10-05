@@ -2,7 +2,9 @@
 	interface Props {
 		value: string;
 		placeholder?: string;
-		type?: 'text' | 'number';
+		type?: 'text' | 'number' | 'email' | 'password';
+		/** Password managers only offer to fill and save when this names the field. */
+		autocomplete?: HTMLInputElement['autocomplete'];
 		required?: boolean;
 		min?: string;
 		step?: string;
@@ -15,6 +17,7 @@
 		value = $bindable(),
 		placeholder,
 		type = 'text',
+		autocomplete,
 		required,
 		min,
 		step,
@@ -26,6 +29,7 @@
 
 <input
 	{type}
+	{autocomplete}
 	{placeholder}
 	{required}
 	{min}

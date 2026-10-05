@@ -33,6 +33,16 @@ pub enum Registration {
     Closed,
 }
 
+impl Registration {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Approval => "approval",
+            Self::Closed => "closed",
+        }
+    }
+}
+
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
         Ok(Self {

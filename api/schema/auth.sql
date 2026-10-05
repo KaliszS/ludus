@@ -59,7 +59,9 @@ CREATE TABLE public.user_identities (
     provider_id text NOT NULL,
     email text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT user_identities_provider_check CHECK ((provider = ANY (ARRAY['google'::text, 'github'::text])))
+    password_hash text,
+    CONSTRAINT user_identities_password_hash_check CHECK (((provider = 'password'::text) = (password_hash IS NOT NULL))),
+    CONSTRAINT user_identities_provider_check CHECK ((provider = ANY (ARRAY['google'::text, 'github'::text, 'password'::text])))
 );
 
 --

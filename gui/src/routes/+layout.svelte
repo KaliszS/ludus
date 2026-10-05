@@ -4,8 +4,6 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { LogOut } from '@lucide/svelte';
-	import IconButton from '$lib/ui/IconButton.svelte';
 	import TabBar from '$lib/ui/TabBar.svelte';
 	import Toast from '$lib/ui/Toast.svelte';
 	import { session } from '$lib/state/session.svelte';
@@ -64,23 +62,30 @@
 					{/each}
 				</nav>
 
-				{#if session.user.avatar_url}
-					<img
-						src={session.user.avatar_url}
-						alt=""
-						referrerpolicy="no-referrer"
-						class="size-8 rounded-full border border-line"
-						title={session.user.email}
-					/>
-				{:else}
-					<span
-						class="grid size-8 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent"
-						title={session.user.email}
-					>
-						{initial}
-					</span>
-				{/if}
-				<IconButton icon={LogOut} label="Sign out" onclick={() => session.signOut()} />
+				<a
+					href="/account"
+					aria-label="Account"
+					title={session.user.email}
+					class="block rounded-full transition active:scale-95
+				       {page.url.pathname === '/account'
+						? 'ring-2 ring-accent ring-offset-2 ring-offset-canvas'
+						: ''}"
+				>
+					{#if session.user.avatar_url}
+						<img
+							src={session.user.avatar_url}
+							alt=""
+							referrerpolicy="no-referrer"
+							class="size-8 rounded-full border border-line"
+						/>
+					{:else}
+						<span
+							class="grid size-8 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent"
+						>
+							{initial}
+						</span>
+					{/if}
+				</a>
 			</div>
 		{/if}
 	</header>

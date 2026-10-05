@@ -14,6 +14,21 @@ pub enum AppError {
     NotFound,
     #[error("sign in required")]
     Unauthenticated,
+    /// Deliberately one answer for a wrong password and for an unknown email.
+    #[error("email or password is incorrect")]
+    InvalidCredentials,
+    #[error("too many failed attempts, try again later")]
+    TooManyAttempts,
+    #[error("{message}")]
+    Refused {
+        code: &'static str,
+        message: &'static str,
+    },
+    #[error("{message}")]
+    Conflict {
+        field: &'static str,
+        message: &'static str,
+    },
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -63,6 +78,12 @@ impl IntoResponse for AppError {
             }
             Self::NotFound => (StatusCode::NOT_FOUND, "not_found", None),
             Self::Unauthenticated => (StatusCode::UNAUTHORIZED, "unauthenticated", None),
+            Self::InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials", None),
+            Self::TooManyAttempts => (StatusCode::TOO_MANY_REQUESTS, "too_many_attempts", None),
+            Self::Refused { code, .. } => (StatusCode::FORBIDDEN, *code, None),
+            Self::Conflict { field, .. } => {
+                (StatusCode::CONFLICT, "conflict", Some((*field).to_owned()))
+            }
             Self::Internal(err) => {
                 tracing::error!(error = ?err, "request failed");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal", None)

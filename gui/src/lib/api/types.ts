@@ -109,3 +109,13 @@ export interface SessionGrant {
 	expires_at: string;
 	user: User;
 }
+
+/** The signed-in user plus how they can sign in, e.g. ["google", "password"]. */
+export interface Account extends User {
+	logins: string[];
+}
+
+export interface AuthMethods {
+	providers: string[];
+	registration: 'open' | 'approval' | 'closed';
+}
