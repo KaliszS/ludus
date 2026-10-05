@@ -6,7 +6,7 @@ pub mod user;
 pub use checkin::Checkin;
 pub use habit::{Habit, Tracking};
 pub use plan::{
-    LevelEra, LevelOutcome, LevelProgress, Measure, Period, PeriodOutcome, PlanLevel, PlanProgress,
-    Requirement, RequirementProgress, eras,
+    Measure, Medal, Period, PeriodOutcome, PeriodProgress, Plan, PlanEra, PlanOutcome,
+    PlanProgress, Requirement, RequirementProgress, Tier, TierQuota, TierStanding, eras,
 };
 pub use user::{OAuthProvider, User, UserStatus};

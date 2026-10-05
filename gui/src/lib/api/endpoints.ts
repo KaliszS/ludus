@@ -5,13 +5,15 @@ import type {
 	AuthMethods,
 	Checkin,
 	Measure,
+	Medal,
 	Habit,
 	HabitPatch,
-	LevelVersions,
+	PlanVersions,
 	NewHabit,
 	Period,
+	PeriodProgress,
 	Plan,
-	PlanLevel,
+	TierQuota,
 	PeriodOutcome,
 	Requirement,
 	SessionGrant,
@@ -47,33 +49,43 @@ export const checkinsApi = {
 /** Edits land in the period this screen shows, which is the client's today. */
 const asOfToday = () => `on=${today()}`;
 
-export const levelsApi = {
-	list: (archived = false) => collection<PlanLevel>(`/plan-levels?archived=${archived}`),
+export const plansApi = {
+	list: (archived = false) => collection<Plan>(`/plans?archived=${archived}`),
 	create: (name: string, period: Period) =>
-		request<PlanLevel>('/plan-levels', { method: 'POST', body: body({ name, period }) }),
+		request<Plan>('/plans', { method: 'POST', body: body({ name, period }) }),
 	update: (id: string, patch: { name?: string; period?: Period; archived?: boolean }) =>
-		request<PlanLevel>(`/plan-levels/${id}?${asOfToday()}`, {
+		request<Plan>(`/plans/${id}?${asOfToday()}`, {
 			method: 'PATCH',
 			body: body(patch)
 		}),
-	remove: (id: string) => request<void>(`/plan-levels/${id}`, { method: 'DELETE' }),
-	requirements: (levelId: string) =>
-		collection<Requirement>(`/plan-levels/${levelId}/requirements`),
-	versions: (levelId: string) => request<LevelVersions>(`/plan-levels/${levelId}/versions`),
+	remove: (id: string) => request<void>(`/plans/${id}`, { method: 'DELETE' }),
+	requirements: (planId: string) => collection<Requirement>(`/plans/${planId}/requirements`),
+	versions: (planId: string) => request<PlanVersions>(`/plans/${planId}/versions`),
+	addTier: (planId: string, medal: Medal | null) =>
+		request<Plan>(`/plans/${planId}/tiers`, { method: 'POST', body: body({ medal }) }),
+	updateTier: (id: string, patch: { name?: string | null; medal?: Medal | null }) =>
+		request<Plan>(`/plan-tiers/${id}`, { method: 'PATCH', body: body(patch) }),
+	retireTier: (id: string) =>
+		request<Plan>(`/plan-tiers/${id}?${asOfToday()}`, { method: 'DELETE' }),
 	addRequirement: (
-		levelId: string,
+		planId: string,
 		habitIds: string[],
-		quota: number,
+		quotas: TierQuota[],
 		measure: Measure,
 		name: string | null
 	) =>
-		request<Requirement>(`/plan-levels/${levelId}/requirements?${asOfToday()}`, {
+		request<Requirement>(`/plans/${planId}/requirements?${asOfToday()}`, {
 			method: 'POST',
-			body: body({ habit_ids: habitIds, quota, measure, name })
+			body: body({ habit_ids: habitIds, quotas, measure, name })
 		}),
 	updateRequirement: (
 		id: string,
-		patch: { habit_ids?: string[]; quota?: number; measure?: Measure; name?: string | null }
+		patch: {
+			habit_ids?: string[];
+			quotas?: TierQuota[];
+			measure?: Measure;
+			name?: string | null;
+		}
 	) =>
 		request<void>(`/plan-requirements/${id}?${asOfToday()}`, {
 			method: 'PATCH',
@@ -83,13 +95,13 @@ export const levelsApi = {
 		request<void>(`/plan-requirements/${id}?${asOfToday()}`, { method: 'DELETE' })
 };
 
-export const planApi = {
+export const progressApi = {
 	history: (period: Period, count: number) =>
-		collection<PeriodOutcome>(`/plan/history?period=${period}&count=${count}`),
+		collection<PeriodOutcome>(`/progress/history?period=${period}&count=${count}`),
 	get: (period: Period, on?: string) => {
 		const query = new URLSearchParams({ period });
 		if (on) query.set('on', on);
-		return request<Plan>(`/plan?${query}`);
+		return request<PeriodProgress>(`/progress?${query}`);
 	}
 };
 

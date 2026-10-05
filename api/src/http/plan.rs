@@ -9,32 +9,88 @@ use super::habit::HabitResponse;
 use std::collections::HashMap;
 
 use crate::domain::{
-    LevelOutcome, LevelProgress, PeriodOutcome, PlanLevel, PlanProgress, Requirement,
-    RequirementProgress,
+    Medal, PeriodOutcome, PeriodProgress, Plan, PlanOutcome, PlanProgress, Requirement,
+    RequirementProgress, Tier, TierQuota,
 };
 use crate::error::AppResult;
 use crate::service::UserService;
 use crate::service::parse_period;
-use crate::service::plan::{CreateLevel, CreateRequirement, UpdateLevel, UpdateRequirement};
+use crate::service::plan::{
+    CreatePlan, CreateRequirement, CreateTier, QuotaInput, UpdatePlan, UpdateRequirement,
+    UpdateTier,
+};
 
 #[derive(Serialize)]
-pub struct LevelResponse {
+pub struct TierResponse {
+    id: Uuid,
+    name: Option<String>,
+    medal: Option<&'static str>,
+    position: f64,
+    /// Retired tiers stay listed: past periods were judged against them.
+    retired_on: Option<NaiveDate>,
+}
+
+impl From<Tier> for TierResponse {
+    fn from(tier: Tier) -> Self {
+        Self {
+            id: tier.id,
+            name: tier.name,
+            medal: tier.medal.map(Medal::as_str),
+            position: tier.position,
+            retired_on: tier.retired_on,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct QuotaResponse {
+    tier_id: Uuid,
+    quota: f64,
+}
+
+impl From<TierQuota> for QuotaResponse {
+    fn from(quota: TierQuota) -> Self {
+        Self {
+            tier_id: quota.tier_id,
+            quota: quota.quota,
+        }
+    }
+}
+
+impl From<QuotaResponse> for QuotaInput {
+    fn from(quota: QuotaResponse) -> Self {
+        Self {
+            tier_id: quota.tier_id,
+            quota: quota.quota,
+        }
+    }
+}
+
+fn quotas(quotas: Vec<TierQuota>) -> Vec<QuotaResponse> {
+    quotas.into_iter().map(Into::into).collect()
+}
+
+#[derive(Serialize)]
+pub struct PlanResponse {
     id: Uuid,
     name: String,
     period: &'static str,
     position: f64,
     /// The day it was archived; `None` while it is in use.
     archived_on: Option<NaiveDate>,
+    /// Lowest first.
+    tiers: Vec<TierResponse>,
 }
 
-impl From<PlanLevel> for LevelResponse {
-    fn from(level: PlanLevel) -> Self {
+impl From<Plan> for PlanResponse {
+    fn from(plan: Plan) -> Self {
         Self {
-            id: level.id,
-            name: level.name,
-            period: level.period.as_str(),
-            position: level.position,
-            archived_on: level.archived_on,
+            id: plan.id,
+            name: plan.name,
+            period: plan.period.as_str(),
+            position: plan.position,
+            archived_on: plan.archived_on,
+            tiers: plan.tiers.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -42,10 +98,10 @@ impl From<PlanLevel> for LevelResponse {
 #[derive(Serialize)]
 pub struct RequirementResponse {
     id: Uuid,
-    level_id: Uuid,
+    plan_id: Uuid,
     name: Option<String>,
     habit_ids: Vec<Uuid>,
-    quota: f64,
+    quotas: Vec<QuotaResponse>,
     measure: &'static str,
     position: f64,
 }
@@ -54,10 +110,10 @@ impl From<Requirement> for RequirementResponse {
     fn from(requirement: Requirement) -> Self {
         Self {
             id: requirement.id,
-            level_id: requirement.level_id,
+            plan_id: requirement.plan_id,
             name: requirement.name,
             habit_ids: requirement.habit_ids,
-            quota: requirement.quota,
+            quotas: quotas(requirement.quotas),
             measure: requirement.measure.as_str(),
             position: requirement.position,
         }
@@ -69,20 +125,27 @@ pub struct RequirementProgressResponse {
     id: Uuid,
     name: Option<String>,
     habits: Vec<HabitResponse>,
-    quota: f64,
+    quotas: Vec<QuotaResponse>,
     measure: &'static str,
     done: f64,
+    /// Whether it holds its part of the plan's lowest tier; a goal that only asks
+    /// further up never holds the plan back.
     met: bool,
 }
 
-impl From<RequirementProgress> for RequirementProgressResponse {
-    fn from(item: RequirementProgress) -> Self {
+impl RequirementProgressResponse {
+    fn new(item: RequirementProgress, base: Option<Uuid>) -> Self {
+        let base_quota = item
+            .quotas
+            .iter()
+            .find(|quota| Some(quota.tier_id) == base)
+            .map(|quota| quota.quota);
         Self {
-            met: item.met(),
+            met: base_quota.is_none_or(|quota| item.done >= quota),
             id: item.id,
             name: item.name,
             habits: item.habits.into_iter().map(Into::into).collect(),
-            quota: item.quota,
+            quotas: quotas(item.quotas),
             measure: item.measure.as_str(),
             done: item.done,
         }
@@ -90,80 +153,103 @@ impl From<RequirementProgress> for RequirementProgressResponse {
 }
 
 #[derive(Serialize)]
-pub struct LevelProgressResponse {
+pub struct StandingResponse {
+    tier_id: Uuid,
+    reached: bool,
+}
+
+#[derive(Serialize)]
+pub struct PlanProgressResponse {
     #[serde(flatten)]
-    level: LevelResponse,
+    plan: PlanResponse,
     met: bool,
     streak: u32,
+    /// The tiers this period asks at, lowest first, and whether each is reached.
+    standing: Vec<StandingResponse>,
     items: Vec<RequirementProgressResponse>,
 }
 
-impl From<LevelProgress> for LevelProgressResponse {
-    fn from(progress: LevelProgress) -> Self {
+impl From<PlanProgress> for PlanProgressResponse {
+    fn from(progress: PlanProgress) -> Self {
+        let base = progress.standing.first().map(|step| step.tier.id);
         Self {
-            met: progress.met(),
+            met: crate::domain::plan::met(&progress.standing),
             streak: progress.streak,
-            level: progress.level.into(),
-            items: progress.items.into_iter().map(Into::into).collect(),
+            standing: progress
+                .standing
+                .into_iter()
+                .map(|step| StandingResponse {
+                    tier_id: step.tier.id,
+                    reached: step.reached,
+                })
+                .collect(),
+            plan: progress.plan.into(),
+            items: progress
+                .items
+                .into_iter()
+                .map(|item| RequirementProgressResponse::new(item, base))
+                .collect(),
         }
     }
 }
 
 #[derive(Serialize)]
-pub struct ProgressResponse {
+pub struct PeriodProgressResponse {
     period: &'static str,
     period_start: NaiveDate,
     period_end: NaiveDate,
-    levels: Vec<LevelProgressResponse>,
+    plans: Vec<PlanProgressResponse>,
 }
 
-impl From<PlanProgress> for ProgressResponse {
-    fn from(progress: PlanProgress) -> Self {
+impl From<PeriodProgress> for PeriodProgressResponse {
+    fn from(progress: PeriodProgress) -> Self {
         Self {
             period: progress.period.as_str(),
             period_start: progress.period_start,
             period_end: progress.period_end,
-            levels: progress.levels.into_iter().map(Into::into).collect(),
+            plans: progress.plans.into_iter().map(Into::into).collect(),
         }
     }
 }
 
 #[derive(Serialize)]
-pub struct OutcomeResponse {
+pub struct PeriodOutcomeResponse {
     period_start: NaiveDate,
     period_end: NaiveDate,
-    levels: Vec<LevelOutcomeResponse>,
+    plans: Vec<PlanOutcomeResponse>,
 }
 
 #[derive(Serialize)]
-pub struct LevelOutcomeResponse {
+pub struct PlanOutcomeResponse {
     id: Uuid,
     name: String,
     archived: bool,
     met: bool,
     reached: usize,
     total: usize,
+    medals: Vec<&'static str>,
 }
 
-impl From<LevelOutcome> for LevelOutcomeResponse {
-    fn from(outcome: LevelOutcome) -> Self {
+impl From<PlanOutcome> for PlanOutcomeResponse {
+    fn from(outcome: PlanOutcome) -> Self {
         Self {
-            met: outcome.met(),
-            id: outcome.level.id,
-            archived: outcome.level.archived_on.is_some(),
-            name: outcome.level.name,
+            met: outcome.met,
+            medals: outcome.medals.into_iter().map(Medal::as_str).collect(),
+            id: outcome.plan.id,
+            archived: outcome.plan.archived_on.is_some(),
+            name: outcome.plan.name,
             reached: outcome.reached,
             total: outcome.total,
         }
     }
 }
 
-impl From<PeriodOutcome> for OutcomeResponse {
+impl From<PeriodOutcome> for PeriodOutcomeResponse {
     fn from(outcome: PeriodOutcome) -> Self {
         Self {
             period_start: outcome.period_start,
             period_end: outcome.period_end,
-            levels: outcome.levels.into_iter().map(Into::into).collect(),
+            plans: outcome.plans.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -172,7 +258,7 @@ impl From<PeriodOutcome> for OutcomeResponse {
 pub struct VersionResponse {
     id: Uuid,
     name: Option<String>,
-    quota: f64,
+    quotas: Vec<QuotaResponse>,
     measure: &'static str,
     /// Lets a client mark what changed where a stretch begins.
     valid_from: NaiveDate,
@@ -188,12 +274,12 @@ pub struct EraResponse {
 
 #[derive(Serialize)]
 pub struct VersionsResponse {
-    level: LevelResponse,
+    plan: PlanResponse,
     eras: Vec<EraResponse>,
 }
 
 #[derive(Deserialize)]
-pub struct LevelQuery {
+pub struct PlanQuery {
     period: Option<String>,
     #[serde(default)]
     archived: bool,
@@ -219,13 +305,13 @@ pub struct HistoryQuery {
 }
 
 #[derive(Deserialize)]
-pub struct CreateLevelBody {
+pub struct CreatePlanBody {
     name: String,
     period: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
-pub struct UpdateLevelBody {
+pub struct UpdatePlanBody {
     name: Option<String>,
     period: Option<String>,
     position: Option<f64>,
@@ -233,10 +319,25 @@ pub struct UpdateLevelBody {
 }
 
 #[derive(Deserialize)]
+pub struct CreateTierBody {
+    name: Option<String>,
+    medal: Option<String>,
+    after: Option<Uuid>,
+}
+
+#[derive(Deserialize, Default)]
+pub struct UpdateTierBody {
+    #[serde(default, deserialize_with = "super::dto::double_option")]
+    name: Option<Option<String>>,
+    #[serde(default, deserialize_with = "super::dto::double_option")]
+    medal: Option<Option<String>>,
+}
+
+#[derive(Deserialize)]
 pub struct CreateRequirementBody {
     name: Option<String>,
     habit_ids: Vec<Uuid>,
-    quota: f64,
+    quotas: Vec<QuotaResponse>,
     measure: Option<String>,
 }
 
@@ -245,55 +346,52 @@ pub struct UpdateRequirementBody {
     #[serde(default, deserialize_with = "super::dto::double_option")]
     name: Option<Option<String>>,
     habit_ids: Option<Vec<Uuid>>,
-    quota: Option<f64>,
+    quotas: Option<Vec<QuotaResponse>>,
     measure: Option<String>,
     position: Option<f64>,
 }
 
-pub async fn list_levels(
+pub async fn list(
     service: UserService,
-    Query(query): Query<LevelQuery>,
-) -> AppResult<Json<List<LevelResponse>>> {
+    Query(query): Query<PlanQuery>,
+) -> AppResult<Json<List<PlanResponse>>> {
     let period = query.period.as_deref().map(parse_period).transpose()?;
     Ok(Json(
         service
-            .plan_levels(period, query.archived)
+            .plans(period, query.archived)
             .await?
             .into_iter()
             .collect(),
     ))
 }
 
-pub async fn show_level(
-    service: UserService,
-    Path(id): Path<Uuid>,
-) -> AppResult<Json<LevelResponse>> {
-    Ok(Json(service.plan_level(id).await?.into()))
+pub async fn show(service: UserService, Path(id): Path<Uuid>) -> AppResult<Json<PlanResponse>> {
+    Ok(Json(service.plan(id).await?.into()))
 }
 
-pub async fn create_level(
+pub async fn create(
     service: UserService,
-    Json(body): Json<CreateLevelBody>,
-) -> AppResult<(StatusCode, Json<LevelResponse>)> {
-    let level = service
-        .create_plan_level(CreateLevel {
+    Json(body): Json<CreatePlanBody>,
+) -> AppResult<(StatusCode, Json<PlanResponse>)> {
+    let plan = service
+        .create_plan(CreatePlan {
             name: body.name,
             period: body.period,
         })
         .await?;
-    Ok((StatusCode::CREATED, Json(level.into())))
+    Ok((StatusCode::CREATED, Json(plan.into())))
 }
 
-pub async fn update_level(
+pub async fn update(
     service: UserService,
     Path(id): Path<Uuid>,
     Query(query): Query<OnQuery>,
-    Json(body): Json<UpdateLevelBody>,
-) -> AppResult<Json<LevelResponse>> {
-    let level = service
-        .update_plan_level(
+    Json(body): Json<UpdatePlanBody>,
+) -> AppResult<Json<PlanResponse>> {
+    let plan = service
+        .update_plan(
             id,
-            UpdateLevel {
+            UpdatePlan {
                 name: body.name,
                 period: body.period,
                 position: body.position,
@@ -302,22 +400,65 @@ pub async fn update_level(
             query.on,
         )
         .await?;
-    Ok(Json(level.into()))
+    Ok(Json(plan.into()))
 }
 
-pub async fn remove_level(service: UserService, Path(id): Path<Uuid>) -> AppResult<StatusCode> {
-    service.delete_plan_level(id).await?;
+pub async fn remove(service: UserService, Path(id): Path<Uuid>) -> AppResult<StatusCode> {
+    service.delete_plan(id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn create_tier(
+    service: UserService,
+    Path(plan_id): Path<Uuid>,
+    Json(body): Json<CreateTierBody>,
+) -> AppResult<(StatusCode, Json<PlanResponse>)> {
+    let plan = service
+        .create_tier(
+            plan_id,
+            CreateTier {
+                name: body.name,
+                medal: body.medal,
+                after: body.after,
+            },
+        )
+        .await?;
+    Ok((StatusCode::CREATED, Json(plan.into())))
+}
+
+pub async fn update_tier(
+    service: UserService,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateTierBody>,
+) -> AppResult<Json<PlanResponse>> {
+    let plan = service
+        .update_tier(
+            id,
+            UpdateTier {
+                name: body.name,
+                medal: body.medal,
+            },
+        )
+        .await?;
+    Ok(Json(plan.into()))
+}
+
+pub async fn retire_tier(
+    service: UserService,
+    Path(id): Path<Uuid>,
+    Query(query): Query<OnQuery>,
+) -> AppResult<Json<PlanResponse>> {
+    Ok(Json(service.retire_tier(id, query.on).await?.into()))
 }
 
 pub async fn versions(
     service: UserService,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<VersionsResponse>> {
-    let (level, eras, habits) = service.plan_versions(id).await?;
+    let (plan, eras, habits) = service.plan_versions(id).await?;
     let habits: HashMap<Uuid, _> = habits.into_iter().map(|habit| (habit.id, habit)).collect();
     Ok(Json(VersionsResponse {
-        level: level.into(),
+        plan: plan.into(),
         eras: eras
             .into_iter()
             .map(|era| EraResponse {
@@ -334,7 +475,7 @@ pub async fn versions(
                             .collect(),
                         id: version.id,
                         name: version.name,
-                        quota: version.quota,
+                        quotas: quotas(version.quotas),
                         measure: version.measure.as_str(),
                         valid_from: version.valid_from,
                     })
@@ -346,26 +487,26 @@ pub async fn versions(
 
 pub async fn list_requirements(
     service: UserService,
-    Path(level_id): Path<Uuid>,
+    Path(plan_id): Path<Uuid>,
 ) -> AppResult<Json<List<RequirementResponse>>> {
     Ok(Json(
-        service.requirements(level_id).await?.into_iter().collect(),
+        service.requirements(plan_id).await?.into_iter().collect(),
     ))
 }
 
 pub async fn create_requirement(
     service: UserService,
-    Path(level_id): Path<Uuid>,
+    Path(plan_id): Path<Uuid>,
     Query(query): Query<OnQuery>,
     Json(body): Json<CreateRequirementBody>,
 ) -> AppResult<(StatusCode, Json<RequirementResponse>)> {
     let requirement = service
         .create_requirement(
-            level_id,
+            plan_id,
             CreateRequirement {
                 name: body.name,
                 habit_ids: body.habit_ids,
-                quota: body.quota,
+                quotas: body.quotas.into_iter().map(Into::into).collect(),
                 measure: body.measure,
             },
             query.on,
@@ -386,7 +527,9 @@ pub async fn update_requirement(
             UpdateRequirement {
                 name: body.name,
                 habit_ids: body.habit_ids,
-                quota: body.quota,
+                quotas: body
+                    .quotas
+                    .map(|quotas| quotas.into_iter().map(Into::into).collect()),
                 measure: body.measure,
                 position: body.position,
             },
@@ -408,7 +551,7 @@ pub async fn remove_requirement(
 pub async fn progress(
     service: UserService,
     Query(query): Query<ProgressQuery>,
-) -> AppResult<Json<ProgressResponse>> {
+) -> AppResult<Json<PeriodProgressResponse>> {
     let period = parse_period(query.period.as_deref().unwrap_or("week"))?;
     let on = query.on.unwrap_or_else(|| Utc::now().date_naive());
     Ok(Json(service.plan_progress(period, on).await?.into()))
@@ -417,7 +560,7 @@ pub async fn progress(
 pub async fn history(
     service: UserService,
     Query(query): Query<HistoryQuery>,
-) -> AppResult<Json<List<OutcomeResponse>>> {
+) -> AppResult<Json<List<PeriodOutcomeResponse>>> {
     let period = parse_period(query.period.as_deref().unwrap_or("week"))?;
     let on = query.on.unwrap_or_else(|| Utc::now().date_naive());
     Ok(Json(

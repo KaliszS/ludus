@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { ArchiveRestore, History, Trash2 } from '@lucide/svelte';
-	import LevelVersions from '$lib/features/levels/LevelVersions.svelte';
-	import LevelEditor from '$lib/features/levels/LevelEditor.svelte';
+	import PlanVersions from '$lib/features/plans/PlanVersions.svelte';
+	import PlanEditor from '$lib/features/plans/PlanEditor.svelte';
 	import IconButton from '$lib/ui/IconButton.svelte';
 	import { habits } from '$lib/state/habits.svelte';
-	import { levels } from '$lib/state/levels.svelte';
+	import { plans } from '$lib/state/plans.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import Empty from '$lib/ui/Empty.svelte';
@@ -16,30 +16,30 @@
 
 	let name = $state('');
 	let period = $state<Period>('week');
-	/** Archived level whose history is open, if any. */
+	/** Archived plan whose history is open, if any. */
 	let opened = $state<string | null>(null);
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		await levels.create(name, period);
+		await plans.create(name, period);
 		name = '';
 	}
 
 	async function erase(id: string, name: string) {
 		if (!confirm(`Delete “${name}” and its whole history? This cannot be undone.`)) return;
-		await levels.remove(id);
+		await plans.remove(id);
 	}
 
 	$effect(() => {
 		habits.load();
-		levels.load();
+		plans.load();
 	});
 </script>
 
 <div class="mb-8">
 	<Card>
 		<form onsubmit={submit} class="space-y-3">
-			<TextField bind:value={name} placeholder="Name this level, e.g. minimum" required />
+			<TextField bind:value={name} placeholder="Name this plan, e.g. minimum" required />
 			<div class="flex items-center gap-3">
 				<Segmented options={PERIODS} value={period} onchange={(p) => (period = p)} />
 				<div class="ml-auto">
@@ -50,50 +50,50 @@
 	</Card>
 </div>
 
-{#if levels.active.length}
+{#if plans.active.length}
 	<div class="space-y-4">
-		{#each levels.active as level (level.id)}
-			<LevelEditor {level} />
+		{#each plans.active as plan (plan.id)}
+			<PlanEditor {plan} />
 		{/each}
 	</div>
-{:else if !levels.loading}
+{:else if !plans.loading}
 	<Empty
-		text={levels.archived.length
-			? 'Every level is archived. Restore one below, or add a new one.'
-			: 'No levels yet. A level is how ambitious a period should be.'}
+		text={plans.archived.length
+			? 'Every plan is archived. Restore one below, or add a new one.'
+			: 'No plans yet. A plan is how ambitious a period should be.'}
 	/>
 {/if}
 
-{#if levels.archived.length}
+{#if plans.archived.length}
 	<section class="mt-8">
 		<h2 class="mb-2 px-1 text-[11px] tracking-wide text-muted uppercase">Archived</h2>
 		<Card>
 			<ul class="-my-2 divide-y divide-line">
-				{#each levels.archived as level (level.id)}
+				{#each plans.archived as plan (plan.id)}
 					<li class="py-2">
 						<div class="flex items-center gap-2">
-							<span class="min-w-0 flex-1 truncate text-sm">{level.name}</span>
-							<span class="text-xs text-muted">{level.period}</span>
+							<span class="min-w-0 flex-1 truncate text-sm">{plan.name}</span>
+							<span class="text-xs text-muted">{plan.period}</span>
 							<IconButton
 								icon={History}
-								label={opened === level.id ? 'Hide history' : 'Show history'}
-								onclick={() => (opened = opened === level.id ? null : level.id)}
+								label={opened === plan.id ? 'Hide history' : 'Show history'}
+								onclick={() => (opened = opened === plan.id ? null : plan.id)}
 							/>
 							<IconButton
 								icon={ArchiveRestore}
 								label="Restore"
-								onclick={() => levels.setArchived(level.id, false)}
+								onclick={() => plans.setArchived(plan.id, false)}
 							/>
 							<IconButton
 								icon={Trash2}
 								label="Delete with its history"
 								tone="danger"
-								onclick={() => erase(level.id, level.name)}
+								onclick={() => erase(plan.id, plan.name)}
 							/>
 						</div>
-						{#if opened === level.id}
+						{#if opened === plan.id}
 							<div class="mt-2 mb-1 pl-1">
-								<LevelVersions levelId={level.id} />
+								<PlanVersions planId={plan.id} />
 							</div>
 						{/if}
 					</li>

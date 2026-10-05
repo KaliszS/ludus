@@ -1,5 +1,5 @@
-import { checkinsApi, levelsApi, planApi } from '$lib/api/endpoints';
-import type { Habit, Period, Plan } from '$lib/api/types';
+import { checkinsApi, plansApi, progressApi } from '$lib/api/endpoints';
+import type { Habit, Period, PeriodProgress } from '$lib/api/types';
 import { shift, today, weekOf } from '$lib/domain/date';
 import { habits } from './habits.svelte';
 import { toast } from './toast.svelte';
@@ -12,7 +12,7 @@ class Board {
 	direction = $state(1);
 	/** habit id -> day -> amount */
 	counts = $state<Record<string, Record<string, number>>>({});
-	plans = $state<Plan[]>([]);
+	progress = $state<PeriodProgress[]>([]);
 	loading = $state(true);
 
 	week = $derived(weekOf(this.selectedDay));
@@ -66,16 +66,14 @@ class Board {
 	}
 
 	private async loadPlans() {
-		const levels = await toast.guard(() => levelsApi.list());
-		if (!levels) return;
+		const plans = await toast.guard(() => plansApi.list());
+		if (!plans) return;
 
-		const periods = PERIOD_ORDER.filter((period) =>
-			levels.some((level) => level.period === period)
+		const periods = PERIOD_ORDER.filter((period) => plans.some((plan) => plan.period === period));
+		const progress = await toast.guard(() =>
+			Promise.all(periods.map((period) => progressApi.get(period, this.selectedDay)))
 		);
-		const plans = await toast.guard(() =>
-			Promise.all(periods.map((period) => planApi.get(period, this.selectedDay)))
-		);
-		if (plans) this.plans = plans;
+		if (progress) this.progress = progress;
 	}
 
 	private write(habitId: string, day: string, times: number) {

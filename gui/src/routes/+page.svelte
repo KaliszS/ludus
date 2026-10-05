@@ -1,7 +1,7 @@
 <script lang="ts">
 	import DayPicker from '$lib/features/board/DayPicker.svelte';
 	import HabitRow from '$lib/features/board/HabitRow.svelte';
-	import PlanCard from '$lib/features/board/PlanCard.svelte';
+	import PeriodCard from '$lib/features/board/PeriodCard.svelte';
 	import { fullLabel, today } from '$lib/domain/date';
 	import { board } from '$lib/state/board.svelte';
 	import Card from '$lib/ui/Card.svelte';
@@ -59,11 +59,11 @@
 		</Card>
 	</div>
 
-	{#each board.plans as plan (plan.period)}
-		<PlanCard {plan} />
+	{#each board.progress as period (period.period)}
+		<PeriodCard {period} />
 	{/each}
 
-	{#if board.plans.length === 0 && !board.loading}
+	{#if board.progress.length === 0 && !board.loading}
 		<Empty text="No plans yet." href="/plans" action="Create one" />
 	{/if}
 </div>

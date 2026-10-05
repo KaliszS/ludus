@@ -1,7 +1,7 @@
 <script lang="ts">
 	import HabitStatRow from '$lib/features/stats/HabitStatRow.svelte';
 	import Heatmap from '$lib/features/stats/Heatmap.svelte';
-	import LevelHistory from '$lib/features/stats/LevelHistory.svelte';
+	import PlanHistory from '$lib/features/stats/PlanHistory.svelte';
 	import { today } from '$lib/domain/date';
 	import { stats } from '$lib/state/stats.svelte';
 	import Card from '$lib/ui/Card.svelte';
@@ -59,12 +59,12 @@
 
 	{#each stats.history as entry (entry.period)}
 		<Card>
-			<h2 class="mb-4 text-sm font-semibold capitalize">{entry.period} levels</h2>
-			<LevelHistory outcomes={entry.outcomes} />
+			<h2 class="mb-4 text-sm font-semibold capitalize">{entry.period} plans</h2>
+			<PlanHistory outcomes={entry.outcomes} />
 		</Card>
 	{/each}
 
 	{#if stats.history.length === 0 && !stats.loading}
-		<Empty text="No levels to track over time." href="/plans" action="Create one" />
+		<Empty text="No plans to track over time." href="/plans" action="Create one" />
 	{/if}
 </div>

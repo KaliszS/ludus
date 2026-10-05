@@ -1,37 +1,43 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { levelsApi } from '$lib/api/endpoints';
-	import type { LevelEra, LevelVersions, RequirementVersion } from '$lib/api/types';
+	import { plansApi } from '$lib/api/endpoints';
+	import type { PlanEra, PlanVersions, RequirementVersion } from '$lib/api/types';
 	import { formatRange, monthDay } from '$lib/domain/date';
 	import { quotaUnit } from '$lib/domain/plan';
 	import Icon from '$lib/ui/Icon.svelte';
+	import TierMark from './TierMark.svelte';
 	import { toast } from '$lib/state/toast.svelte';
 
-	let { levelId }: { levelId: string } = $props();
+	let { planId }: { planId: string } = $props();
 
-	let history = $state<LevelVersions | null>(null);
+	let history = $state<PlanVersions | null>(null);
 	const eras = $derived(history?.eras ?? null);
-	const archivedOn = $derived(history?.level.archived_on ?? null);
+	const archivedOn = $derived(history?.plan.archived_on ?? null);
 
 	onMount(async () => {
-		history = (await toast.guard(() => levelsApi.versions(levelId))) ?? null;
+		history = (await toast.guard(() => plansApi.versions(planId))) ?? null;
 	});
 
-	const span = (era: LevelEra) =>
+	const span = (era: PlanEra) =>
 		era.to ? formatRange(era.from, era.to) : `since ${monthDay(era.from)}`;
 
 	/** A version that began where this stretch begins is what changed here. The
-	 *  oldest stretch is where the level started, so nothing in it counts as a change. */
-	const isNew = (era: LevelEra, version: RequirementVersion, index: number) =>
+	 *  oldest stretch is where the plan started, so nothing in it counts as a change. */
+	const isNew = (era: PlanEra, version: RequirementVersion, index: number) =>
 		index < (eras?.length ?? 0) - 1 && version.valid_from === era.from;
 
-	const target = (version: RequirementVersion) =>
-		`${version.quota} ${quotaUnit(version.measure, version.quota, version.habits) ?? 'total'}`;
+	const tiers = $derived(history?.plan.tiers ?? []);
+	const tiered = $derived(tiers.length > 1);
+
+	const unit = (version: RequirementVersion) => {
+		const top = version.quotas.at(-1)?.quota ?? 0;
+		return quotaUnit(version.measure, top, version.habits) ?? 'total';
+	};
 </script>
 
 {#if archivedOn}
 	<p class="mb-3 text-xs text-muted">
-		Archived {monthDay(archivedOn)}: it stopped counting from that {history?.level.period}.
+		Archived {monthDay(archivedOn)}: it stopped counting from that {history?.plan.period}.
 	</p>
 {/if}
 
@@ -84,7 +90,19 @@
 										new
 									</span>
 								{/if}
-								<span class="shrink-0 text-xs text-muted tabular-nums">{target(version)}</span>
+								<!-- Retired tiers still show here: this is what those periods asked. -->
+								<span class="flex shrink-0 items-center gap-1.5 text-xs text-muted tabular-nums">
+									{#each version.quotas as quota (quota.tier_id)}
+										{@const index = tiers.findIndex((tier) => tier.id === quota.tier_id)}
+										<span class="flex items-center gap-0.5">
+											{#if tiered && index >= 0}
+												<TierMark tier={tiers[index]} {index} size={13} />
+											{/if}
+											{quota.quota}
+										</span>
+									{/each}
+									{unit(version)}
+								</span>
 							</li>
 						{/each}
 					</ul>

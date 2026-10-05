@@ -1,4 +1,4 @@
-import { checkinsApi, levelsApi, planApi } from '$lib/api/endpoints';
+import { checkinsApi, plansApi, progressApi } from '$lib/api/endpoints';
 import type { Period, PeriodOutcome, UserCheckin } from '$lib/api/types';
 import { shift, today } from '$lib/domain/date';
 import { habitStats, type HabitStat } from '$lib/domain/stats';
@@ -41,15 +41,13 @@ class Stats {
 	}
 
 	private async loadHistory() {
-		// Archived levels too: their periods before archiving are still history.
-		const levels = await toast.guard(() => levelsApi.list(true));
-		if (!levels) return;
+		// Archived plans too: their periods before archiving are still history.
+		const plans = await toast.guard(() => plansApi.list(true));
+		if (!plans) return;
 
-		const periods = PERIOD_ORDER.filter((period) =>
-			levels.some((level) => level.period === period)
-		);
+		const periods = PERIOD_ORDER.filter((period) => plans.some((plan) => plan.period === period));
 		const outcomes = await toast.guard(() =>
-			Promise.all(periods.map((period) => planApi.history(period, HISTORY_LENGTH)))
+			Promise.all(periods.map((period) => progressApi.history(period, HISTORY_LENGTH)))
 		);
 		if (outcomes) {
 			this.history = periods.map((period, index) => ({ period, outcomes: outcomes[index] }));
