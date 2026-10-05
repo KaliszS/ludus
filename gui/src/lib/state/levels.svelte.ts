@@ -4,6 +4,8 @@ import { toast } from './toast.svelte';
 
 class Levels {
 	items = $state<PlanLevel[]>([]);
+	active = $derived(this.items.filter((level) => !level.archived_on));
+	archived = $derived(this.items.filter((level) => level.archived_on));
 	/** level id -> its requirements, in display order */
 	requirements = $state<Record<string, Requirement[]>>({});
 	loading = $state(false);
@@ -14,15 +16,17 @@ class Levels {
 
 	async load() {
 		this.loading = true;
-		const levels = await toast.guard(() => levelsApi.list());
+		const levels = await toast.guard(() => levelsApi.list(true));
 		if (levels) {
 			this.items = levels;
+			// Archived levels are never edited, so their requirements are not needed here.
+			const editable = levels.filter((level) => !level.archived_on);
 			const lists = await toast.guard(() =>
-				Promise.all(levels.map((level) => levelsApi.requirements(level.id)))
+				Promise.all(editable.map((level) => levelsApi.requirements(level.id)))
 			);
 			if (lists) {
 				this.requirements = Object.fromEntries(
-					levels.map((level, index) => [level.id, lists[index]])
+					editable.map((level, index) => [level.id, lists[index]])
 				);
 			}
 		}
@@ -51,6 +55,12 @@ class Levels {
 		const ok = await toast.guard(() =>
 			levelsApi.updateRequirement(id, { habit_ids: habitIds }).then(() => true)
 		);
+		if (ok) await this.load();
+	}
+
+	/** Stops it counting from this period on; every earlier period keeps its result. */
+	async setArchived(id: string, archived: boolean) {
+		const ok = await toast.guard(() => levelsApi.update(id, { archived }).then(() => true));
 		if (ok) await this.load();
 	}
 

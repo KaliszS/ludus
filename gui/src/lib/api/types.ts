@@ -30,6 +30,8 @@ export interface PlanLevel {
 	name: string;
 	period: Period;
 	position: number;
+	/** The day it was archived; null while it is in use. */
+	archived_on: string | null;
 }
 
 export type Measure = 'amount' | 'occurrences';
@@ -66,6 +68,7 @@ export interface LevelProgress extends PlanLevel {
 export interface LevelOutcome {
 	id: string;
 	name: string;
+	archived: boolean;
 	met: boolean;
 	reached: number;
 	total: number;
@@ -118,4 +121,26 @@ export interface Account extends User {
 export interface AuthMethods {
 	providers: string[];
 	registration: 'open' | 'approval' | 'closed';
+}
+
+/** One shape a requirement had; `valid_from` marks where this version began. */
+export interface RequirementVersion {
+	id: string;
+	name: string | null;
+	quota: number;
+	measure: Measure;
+	valid_from: string;
+	habits: Habit[];
+}
+
+/** A stretch of a level's life with the same requirements; `to` is exclusive, null for now. */
+export interface LevelEra {
+	from: string;
+	to: string | null;
+	requirements: RequirementVersion[];
+}
+
+export interface LevelVersions {
+	level: PlanLevel;
+	eras: LevelEra[];
 }

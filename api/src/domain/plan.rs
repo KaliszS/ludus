@@ -100,9 +100,21 @@ pub struct PlanLevel {
     pub name: String,
     pub period: Period,
     pub position: f64,
+    /// The day it was archived. It no longer counts from the period holding that day.
+    pub archived_on: Option<NaiveDate>,
+}
+
+impl PlanLevel {
+    /// Whether the level was still in use when the period ending at `end` closed.
+    pub fn counts_before(&self, end: NaiveDate) -> bool {
+        self.archived_on.is_none_or(|day| day >= end)
+    }
 }
 
 /// One member is an ordinary quota; several express "any N from this set".
+///
+/// A row is one version of a requirement, in force from `valid_from` up to
+/// `valid_to`, so a period is judged by what was asked of it at the time.
 #[derive(Debug, Clone)]
 pub struct Requirement {
     pub id: Uuid,
@@ -113,6 +125,57 @@ pub struct Requirement {
     pub measure: Measure,
     pub position: f64,
     pub habit_ids: Vec<Uuid>,
+    pub valid_from: NaiveDate,
+    /// Exclusive. `None` is the version in force now.
+    pub valid_to: Option<NaiveDate>,
+}
+
+impl Requirement {
+    /// Both bounds sit on period starts, so the period's first day decides.
+    pub fn in_force_at(&self, start: NaiveDate) -> bool {
+        self.valid_from <= start && self.valid_to.is_none_or(|to| to > start)
+    }
+}
+
+/// One stretch of a level's life during which the same requirements were in force.
+#[derive(Debug, Clone)]
+pub struct LevelEra {
+    pub from: NaiveDate,
+    /// Exclusive. `None` is the stretch in force now.
+    pub to: Option<NaiveDate>,
+    pub requirements: Vec<Requirement>,
+}
+
+/// Cuts a level's versions into the stretches between changes, newest first. Every
+/// date a version starts or ends is a boundary, so each stretch shows exactly what
+/// the level asked then - including an empty one after everything was removed.
+pub fn eras(versions: &[Requirement]) -> Vec<LevelEra> {
+    let mut bounds: Vec<NaiveDate> = versions
+        .iter()
+        .flat_map(|version| std::iter::once(version.valid_from).chain(version.valid_to))
+        .collect();
+    bounds.sort_unstable();
+    bounds.dedup();
+
+    let mut eras: Vec<LevelEra> = bounds
+        .iter()
+        .enumerate()
+        .map(|(index, from)| {
+            let mut requirements: Vec<Requirement> = versions
+                .iter()
+                .filter(|version| version.in_force_at(*from))
+                .cloned()
+                .collect();
+            requirements.sort_by(|a, b| a.position.total_cmp(&b.position));
+            LevelEra {
+                from: *from,
+                to: bounds.get(index + 1).copied(),
+                requirements,
+            }
+        })
+        .collect();
+    eras.reverse();
+    eras
 }
 
 /// One past period reduced to how many of each level's quotas were reached.
@@ -181,6 +244,106 @@ mod tests {
 
     fn d(s: &str) -> NaiveDate {
         s.parse().unwrap()
+    }
+
+    fn version(from: &str, to: Option<&str>) -> Requirement {
+        Requirement {
+            id: Uuid::nil(),
+            level_id: Uuid::nil(),
+            name: None,
+            quota: 1.0,
+            measure: Measure::Occurrences,
+            position: 0.0,
+            habit_ids: Vec::new(),
+            valid_from: d(from),
+            valid_to: to.map(d),
+        }
+    }
+
+    #[test]
+    fn a_version_covers_its_periods_and_nothing_else() {
+        let old = version("2026-09-07", Some("2026-09-21"));
+        let new = version("2026-09-21", None);
+        let weeks = [
+            "2026-08-31",
+            "2026-09-07",
+            "2026-09-14",
+            "2026-09-21",
+            "2026-09-28",
+        ];
+        let covered: Vec<(bool, bool)> = weeks
+            .iter()
+            .map(|week| (old.in_force_at(d(week)), new.in_force_at(d(week))))
+            .collect();
+        assert_eq!(
+            covered,
+            [
+                (false, false),
+                (true, false),
+                (true, false),
+                (false, true),
+                (false, true)
+            ]
+        );
+    }
+
+    #[test]
+    fn eras_split_at_every_change_newest_first() {
+        let mut quota_five = version("2026-09-07", Some("2026-09-21"));
+        quota_five.quota = 5.0;
+        let mut quota_six = version("2026-09-21", None);
+        quota_six.quota = 6.0;
+        let added_later = version("2026-09-28", None);
+        let removed = version("2026-09-07", Some("2026-09-28"));
+
+        let eras = eras(&[quota_five, quota_six, added_later, removed]);
+        let shape: Vec<(String, Option<String>, Vec<f64>)> = eras
+            .iter()
+            .map(|era| {
+                (
+                    era.from.to_string(),
+                    era.to.map(|to| to.to_string()),
+                    era.requirements.iter().map(|r| r.quota).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            shape,
+            [
+                ("2026-09-28".into(), None, vec![6.0, 1.0]),
+                (
+                    "2026-09-21".into(),
+                    Some("2026-09-28".into()),
+                    vec![6.0, 1.0]
+                ),
+                (
+                    "2026-09-07".into(),
+                    Some("2026-09-21".into()),
+                    vec![5.0, 1.0]
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn removing_everything_leaves_an_empty_stretch() {
+        let eras = eras(&[version("2026-09-07", Some("2026-09-14"))]);
+        assert_eq!(eras.len(), 2);
+        assert!(eras[0].requirements.is_empty());
+        assert_eq!(eras[0].from, d("2026-09-14"));
+    }
+
+    #[test]
+    fn an_archived_level_keeps_the_periods_before_it() {
+        let level = PlanLevel {
+            id: Uuid::nil(),
+            name: "minimum".into(),
+            period: Period::Week,
+            position: 0.0,
+            archived_on: Some(d("2026-09-23")),
+        };
+        assert!(level.counts_before(d("2026-09-21")));
+        assert!(!level.counts_before(d("2026-09-28")));
     }
 
     #[test]

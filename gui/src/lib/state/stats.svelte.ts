@@ -1,6 +1,4 @@
-import { planApi } from '$lib/api/endpoints';
-import { checkinsApi } from '$lib/api/endpoints';
-import { levelsApi } from '$lib/api/endpoints';
+import { checkinsApi, levelsApi, planApi } from '$lib/api/endpoints';
 import type { Period, PeriodOutcome, UserCheckin } from '$lib/api/types';
 import { shift, today } from '$lib/domain/date';
 import { habitStats, type HabitStat } from '$lib/domain/stats';
@@ -43,7 +41,8 @@ class Stats {
 	}
 
 	private async loadHistory() {
-		const levels = await toast.guard(() => levelsApi.list());
+		// Archived levels too: their periods before archiving are still history.
+		const levels = await toast.guard(() => levelsApi.list(true));
 		if (!levels) return;
 
 		const periods = PERIOD_ORDER.filter((period) =>

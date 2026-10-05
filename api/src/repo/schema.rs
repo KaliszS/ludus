@@ -155,6 +155,7 @@ diesel::table! {
         position -> Float8,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        archived_on -> Nullable<Date>,
     }
 }
 
@@ -173,6 +174,8 @@ diesel::table! {
         quota -> Float8,
         measure -> Text,
         position -> Float8,
+        valid_from -> Date,
+        valid_to -> Nullable<Date>,
     }
 }
 

@@ -42,7 +42,12 @@
 	}
 
 	async function remove() {
-		if (!confirm(`Delete “${habit.name}” and every check-in for it?`)) return;
+		if (
+			!confirm(
+				`Delete “${habit.name}” and every check-in for it? Archiving keeps its history instead.`
+			)
+		)
+			return;
 		await habits.remove(habit.id);
 	}
 </script>

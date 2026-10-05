@@ -1,0 +1,97 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { levelsApi } from '$lib/api/endpoints';
+	import type { LevelEra, LevelVersions, RequirementVersion } from '$lib/api/types';
+	import { formatRange, monthDay } from '$lib/domain/date';
+	import Icon from '$lib/ui/Icon.svelte';
+	import { toast } from '$lib/state/toast.svelte';
+
+	let { levelId }: { levelId: string } = $props();
+
+	let history = $state<LevelVersions | null>(null);
+	const eras = $derived(history?.eras ?? null);
+	const archivedOn = $derived(history?.level.archived_on ?? null);
+
+	onMount(async () => {
+		history = (await toast.guard(() => levelsApi.versions(levelId))) ?? null;
+	});
+
+	const span = (era: LevelEra) =>
+		era.to ? formatRange(era.from, era.to) : `since ${monthDay(era.from)}`;
+
+	/** A version that began where this stretch begins is what changed here. The
+	 *  oldest stretch is where the level started, so nothing in it counts as a change. */
+	const isNew = (era: LevelEra, version: RequirementVersion, index: number) =>
+		index < (eras?.length ?? 0) - 1 && version.valid_from === era.from;
+
+	function target(version: RequirementVersion): string {
+		if (version.measure === 'occurrences') return `${version.quota} days`;
+		const unit = version.habits.length === 1 ? version.habits[0].unit : null;
+		return `${version.quota} ${unit ?? 'total'}`;
+	}
+</script>
+
+{#if archivedOn}
+	<p class="mb-3 text-xs text-muted">
+		Archived {monthDay(archivedOn)}: it stopped counting from that {history?.level.period}.
+	</p>
+{/if}
+
+{#if eras === null}
+	<p class="text-xs text-muted">Loading history…</p>
+{:else if eras.length <= 1}
+	<p class="text-xs text-muted">
+		{eras.length
+			? `Unchanged since ${monthDay(eras[0].from)}.`
+			: 'Nothing has been asked of it yet.'}
+	</p>
+{:else}
+	<ol class="space-y-4">
+		{#each eras as era, index (era.from)}
+			<li class="relative pl-5">
+				<!-- The rail ties the stretches into one timeline; the newest dot is filled. -->
+				<span
+					class="absolute top-1.5 left-0 size-2 rounded-full border border-line
+					       {index === 0 ? 'border-accent bg-accent' : 'bg-surface'}"
+				></span>
+				{#if index < eras.length - 1}
+					<span class="absolute top-4 bottom-[-1.25rem] left-[3.5px] w-px bg-line"></span>
+				{/if}
+
+				<p class="text-xs font-medium {index === 0 ? 'text-ink' : 'text-muted'}">
+					{span(era)}{index === 0 && !era.to && !archivedOn ? ' · current' : ''}
+				</p>
+
+				{#if era.requirements.length === 0}
+					<p class="mt-1 text-xs text-muted">Nothing asked.</p>
+				{:else}
+					<ul class="mt-1.5 space-y-1">
+						{#each era.requirements as version (version.id)}
+							<li class="flex items-center gap-2 text-sm">
+								<span class="flex shrink-0 gap-0.5">
+									{#each version.habits as habit (habit.id)}
+										<span style:color={habit.color ?? 'var(--color-muted)'}>
+											<Icon name={habit.icon} size={14} />
+										</span>
+									{/each}
+								</span>
+								<span class="min-w-0 flex-1 truncate">
+									{version.name ?? version.habits.map((habit) => habit.name).join(' / ')}
+								</span>
+								{#if isNew(era, version, index)}
+									<span
+										class="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent"
+										title="This version begins here"
+									>
+										new
+									</span>
+								{/if}
+								<span class="shrink-0 text-xs text-muted tabular-nums">{target(version)}</span>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</li>
+		{/each}
+	</ol>
+{/if}

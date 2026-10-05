@@ -187,11 +187,19 @@ pub async fn by_ids(conn: &mut DbConn, user_id: Uuid, ids: &[Uuid]) -> AppResult
     Ok(rows.into_iter().map(Habit::from).collect())
 }
 
-pub async fn active_ids(conn: &mut DbConn, user_id: Uuid) -> AppResult<Vec<Uuid>> {
-    Ok(habits::table
+/// Archived habits and the day each was archived on, in UTC.
+pub async fn archived_days(
+    conn: &mut DbConn,
+    user_id: Uuid,
+) -> AppResult<std::collections::HashMap<Uuid, chrono::NaiveDate>> {
+    let rows: Vec<(Uuid, Option<DateTime<Utc>>)> = habits::table
         .filter(habits::user_id.eq(user_id))
-        .filter(habits::archived_at.is_null())
-        .select(habits::id)
+        .filter(habits::archived_at.is_not_null())
+        .select((habits::id, habits::archived_at))
         .load(conn)
-        .await?)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(id, at)| at.map(|at| (id, at.date_naive())))
+        .collect())
 }

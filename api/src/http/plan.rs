@@ -6,6 +6,8 @@ use uuid::Uuid;
 use super::dto::List;
 use super::extract::{Json, Path, Query};
 use super::habit::HabitResponse;
+use std::collections::HashMap;
+
 use crate::domain::{
     LevelOutcome, LevelProgress, PeriodOutcome, PlanLevel, PlanProgress, Requirement,
     RequirementProgress,
@@ -21,6 +23,8 @@ pub struct LevelResponse {
     name: String,
     period: &'static str,
     position: f64,
+    /// The day it was archived; `None` while it is in use.
+    archived_on: Option<NaiveDate>,
 }
 
 impl From<PlanLevel> for LevelResponse {
@@ -30,6 +34,7 @@ impl From<PlanLevel> for LevelResponse {
             name: level.name,
             period: level.period.as_str(),
             position: level.position,
+            archived_on: level.archived_on,
         }
     }
 }
@@ -134,6 +139,7 @@ pub struct OutcomeResponse {
 pub struct LevelOutcomeResponse {
     id: Uuid,
     name: String,
+    archived: bool,
     met: bool,
     reached: usize,
     total: usize,
@@ -144,6 +150,7 @@ impl From<LevelOutcome> for LevelOutcomeResponse {
         Self {
             met: outcome.met(),
             id: outcome.level.id,
+            archived: outcome.level.archived_on.is_some(),
             name: outcome.level.name,
             reached: outcome.reached,
             total: outcome.total,
@@ -161,9 +168,41 @@ impl From<PeriodOutcome> for OutcomeResponse {
     }
 }
 
+#[derive(Serialize)]
+pub struct VersionResponse {
+    id: Uuid,
+    name: Option<String>,
+    quota: f64,
+    measure: &'static str,
+    /// Lets a client mark what changed where a stretch begins.
+    valid_from: NaiveDate,
+    habits: Vec<HabitResponse>,
+}
+
+#[derive(Serialize)]
+pub struct EraResponse {
+    from: NaiveDate,
+    to: Option<NaiveDate>,
+    requirements: Vec<VersionResponse>,
+}
+
+#[derive(Serialize)]
+pub struct VersionsResponse {
+    level: LevelResponse,
+    eras: Vec<EraResponse>,
+}
+
 #[derive(Deserialize)]
 pub struct LevelQuery {
     period: Option<String>,
+    #[serde(default)]
+    archived: bool,
+}
+
+/// The client's today on an edit, so the change lands in the period its screen shows.
+#[derive(Deserialize, Default)]
+pub struct OnQuery {
+    on: Option<NaiveDate>,
 }
 
 #[derive(Deserialize)]
@@ -190,6 +229,7 @@ pub struct UpdateLevelBody {
     name: Option<String>,
     period: Option<String>,
     position: Option<f64>,
+    archived: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -216,7 +256,11 @@ pub async fn list_levels(
 ) -> AppResult<Json<List<LevelResponse>>> {
     let period = query.period.as_deref().map(parse_period).transpose()?;
     Ok(Json(
-        service.plan_levels(period).await?.into_iter().collect(),
+        service
+            .plan_levels(period, query.archived)
+            .await?
+            .into_iter()
+            .collect(),
     ))
 }
 
@@ -243,6 +287,7 @@ pub async fn create_level(
 pub async fn update_level(
     service: UserService,
     Path(id): Path<Uuid>,
+    Query(query): Query<OnQuery>,
     Json(body): Json<UpdateLevelBody>,
 ) -> AppResult<Json<LevelResponse>> {
     let level = service
@@ -252,7 +297,9 @@ pub async fn update_level(
                 name: body.name,
                 period: body.period,
                 position: body.position,
+                archived: body.archived,
             },
+            query.on,
         )
         .await?;
     Ok(Json(level.into()))
@@ -261,6 +308,40 @@ pub async fn update_level(
 pub async fn remove_level(service: UserService, Path(id): Path<Uuid>) -> AppResult<StatusCode> {
     service.delete_plan_level(id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn versions(
+    service: UserService,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<VersionsResponse>> {
+    let (level, eras, habits) = service.plan_versions(id).await?;
+    let habits: HashMap<Uuid, _> = habits.into_iter().map(|habit| (habit.id, habit)).collect();
+    Ok(Json(VersionsResponse {
+        level: level.into(),
+        eras: eras
+            .into_iter()
+            .map(|era| EraResponse {
+                from: era.from,
+                to: era.to,
+                requirements: era
+                    .requirements
+                    .into_iter()
+                    .map(|version| VersionResponse {
+                        habits: version
+                            .habit_ids
+                            .iter()
+                            .filter_map(|habit_id| habits.get(habit_id).cloned().map(Into::into))
+                            .collect(),
+                        id: version.id,
+                        name: version.name,
+                        quota: version.quota,
+                        measure: version.measure.as_str(),
+                        valid_from: version.valid_from,
+                    })
+                    .collect(),
+            })
+            .collect(),
+    }))
 }
 
 pub async fn list_requirements(
@@ -275,6 +356,7 @@ pub async fn list_requirements(
 pub async fn create_requirement(
     service: UserService,
     Path(level_id): Path<Uuid>,
+    Query(query): Query<OnQuery>,
     Json(body): Json<CreateRequirementBody>,
 ) -> AppResult<(StatusCode, Json<RequirementResponse>)> {
     let requirement = service
@@ -286,6 +368,7 @@ pub async fn create_requirement(
                 quota: body.quota,
                 measure: body.measure,
             },
+            query.on,
         )
         .await?;
     Ok((StatusCode::CREATED, Json(requirement.into())))
@@ -294,6 +377,7 @@ pub async fn create_requirement(
 pub async fn update_requirement(
     service: UserService,
     Path(id): Path<Uuid>,
+    Query(query): Query<OnQuery>,
     Json(body): Json<UpdateRequirementBody>,
 ) -> AppResult<StatusCode> {
     service
@@ -306,6 +390,7 @@ pub async fn update_requirement(
                 measure: body.measure,
                 position: body.position,
             },
+            query.on,
         )
         .await?;
     Ok(StatusCode::NO_CONTENT)
@@ -314,8 +399,9 @@ pub async fn update_requirement(
 pub async fn remove_requirement(
     service: UserService,
     Path(id): Path<Uuid>,
+    Query(query): Query<OnQuery>,
 ) -> AppResult<StatusCode> {
-    service.delete_requirement(id).await?;
+    service.delete_requirement(id, query.on).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

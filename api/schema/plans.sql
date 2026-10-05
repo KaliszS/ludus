@@ -11,6 +11,7 @@ CREATE TABLE public.plan_levels (
     "position" double precision NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    archived_on date,
     CONSTRAINT plan_levels_period_check CHECK ((period = ANY (ARRAY['day'::text, 'week'::text, 'month'::text, 'quarter'::text, 'year'::text])))
 );
 
@@ -34,8 +35,11 @@ CREATE TABLE public.plan_requirements (
     quota double precision NOT NULL,
     measure text DEFAULT 'amount'::text NOT NULL,
     "position" double precision NOT NULL,
+    valid_from date NOT NULL,
+    valid_to date,
     CONSTRAINT plan_requirements_measure_check CHECK ((measure = ANY (ARRAY['amount'::text, 'occurrences'::text]))),
-    CONSTRAINT plan_requirements_quota_check CHECK ((quota > (0)::double precision))
+    CONSTRAINT plan_requirements_quota_check CHECK ((quota > (0)::double precision)),
+    CONSTRAINT plan_requirements_validity_check CHECK (((valid_to IS NULL) OR (valid_to > valid_from)))
 );
 
 --
