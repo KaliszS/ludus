@@ -1,32 +1,57 @@
+pub mod auth;
 pub mod checkin;
 pub mod habit;
 pub mod plan;
 
+use std::sync::Arc;
+
 use uuid::Uuid;
 
+use crate::config::AuthConfig;
 use crate::domain::{Period, Tracking};
 use crate::error::{AppError, AppResult};
 use crate::repo::pool::{DbConn, DbPool};
 
-/// Stands in for the authenticated user until auth lands; seeded by dev_seed.sql.
-pub const DEV_USER_ID: Uuid = Uuid::from_u128(1);
-
+/// Everything that does not need to know who is asking: signing in, mostly.
 #[derive(Clone)]
 pub struct Service {
     pool: DbPool,
+    auth: Arc<AuthConfig>,
+    http: reqwest::Client,
+}
+
+/// The service acting for one signed-in user. Only the auth extractor builds one,
+/// so a handler holding it has already proven who is asking - and a handler that
+/// forgets to ask does not compile, because the data methods live only here.
+pub struct UserService {
+    service: Service,
+    user_id: Uuid,
 }
 
 impl Service {
-    pub fn new(pool: DbPool) -> Self {
-        Self { pool }
+    pub fn new(pool: DbPool, auth: AuthConfig) -> Self {
+        Self {
+            pool,
+            auth: Arc::new(auth),
+            http: reqwest::Client::new(),
+        }
     }
 
-    pub fn current_user(&self) -> Uuid {
-        DEV_USER_ID
+    fn for_user(&self, user_id: Uuid) -> UserService {
+        UserService {
+            service: self.clone(),
+            user_id,
+        }
     }
 
     async fn conn(&self) -> AppResult<DbConn> {
         Ok(self.pool.get().await?)
+    }
+}
+
+impl UserService {
+    async fn conn(&self) -> AppResult<DbConn> {
+        self.service.conn().await
     }
 }
 

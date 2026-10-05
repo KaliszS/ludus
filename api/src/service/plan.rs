@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::NaiveDate;
 use uuid::Uuid;
 
-use super::{Service, parse_period, require_name};
+use super::{UserService, parse_period, require_name};
 use crate::domain::{
     LevelOutcome, LevelProgress, Measure, Period, PeriodOutcome, PlanLevel, PlanProgress,
     Requirement, RequirementProgress,
@@ -112,15 +112,15 @@ fn parse_measure(value: &str) -> AppResult<Measure> {
         .ok_or_else(|| AppError::invalid("measure", r#"must be "amount" or "occurrences""#))
 }
 
-impl Service {
+impl UserService {
     pub async fn plan_levels(&self, period: Option<Period>) -> AppResult<Vec<PlanLevel>> {
         let mut conn = self.conn().await?;
-        plan::list_levels(&mut conn, self.current_user(), period).await
+        plan::list_levels(&mut conn, self.user_id, period).await
     }
 
     pub async fn plan_level(&self, id: Uuid) -> AppResult<PlanLevel> {
         let mut conn = self.conn().await?;
-        plan::get_level(&mut conn, self.current_user(), id).await
+        plan::get_level(&mut conn, self.user_id, id).await
     }
 
     pub async fn create_plan_level(&self, input: CreateLevel) -> AppResult<PlanLevel> {
@@ -130,7 +130,7 @@ impl Service {
             None => Period::Week,
         };
 
-        let user_id = self.current_user();
+        let user_id = self.user_id;
         let mut conn = self.conn().await?;
         let position = plan::next_level_position(&mut conn, user_id, period).await?;
 
@@ -163,7 +163,7 @@ impl Service {
         let mut conn = self.conn().await?;
         plan::update_level(
             &mut conn,
-            self.current_user(),
+            self.user_id,
             id,
             LevelChanges {
                 name,
@@ -176,12 +176,12 @@ impl Service {
 
     pub async fn delete_plan_level(&self, id: Uuid) -> AppResult<()> {
         let mut conn = self.conn().await?;
-        plan::delete_level(&mut conn, self.current_user(), id).await
+        plan::delete_level(&mut conn, self.user_id, id).await
     }
 
     pub async fn requirements(&self, level_id: Uuid) -> AppResult<Vec<Requirement>> {
         let mut conn = self.conn().await?;
-        plan::get_level(&mut conn, self.current_user(), level_id).await?;
+        plan::get_level(&mut conn, self.user_id, level_id).await?;
         plan::requirements_for(&mut conn, &[level_id]).await
     }
 
@@ -198,7 +198,7 @@ impl Service {
             return Err(AppError::invalid("quota", "must be positive"));
         }
 
-        let user_id = self.current_user();
+        let user_id = self.user_id;
         let mut conn = self.conn().await?;
         plan::get_level(&mut conn, user_id, level_id).await?;
         let habit_ids = self
@@ -248,7 +248,7 @@ impl Service {
             return Err(AppError::invalid("quota", "must be positive"));
         }
 
-        let user_id = self.current_user();
+        let user_id = self.user_id;
         let mut conn = self.conn().await?;
         plan::requirement_level(&mut conn, user_id, id).await?;
 
@@ -275,7 +275,7 @@ impl Service {
 
     pub async fn delete_requirement(&self, id: Uuid) -> AppResult<()> {
         let mut conn = self.conn().await?;
-        plan::requirement_level(&mut conn, self.current_user(), id).await?;
+        plan::requirement_level(&mut conn, self.user_id, id).await?;
         plan::delete_requirement(&mut conn, id).await
     }
 
@@ -315,7 +315,7 @@ impl Service {
         on: NaiveDate,
     ) -> AppResult<Vec<PeriodOutcome>> {
         let count = count.clamp(1, 53);
-        let user_id = self.current_user();
+        let user_id = self.user_id;
         let mut conn = self.conn().await?;
 
         let levels = plan::list_levels(&mut conn, user_id, Some(period)).await?;
@@ -380,7 +380,7 @@ impl Service {
     /// The plan screen: every level of one period with its requirements and how far along they are.
     pub async fn plan_progress(&self, period: Period, on: NaiveDate) -> AppResult<PlanProgress> {
         let (period_start, period_end) = period.window(on);
-        let user_id = self.current_user();
+        let user_id = self.user_id;
         let mut conn = self.conn().await?;
 
         let levels = plan::list_levels(&mut conn, user_id, Some(period)).await?;

@@ -1,3 +1,4 @@
+mod auth;
 mod checkin;
 mod dto;
 mod extract;
@@ -6,7 +7,7 @@ mod plan;
 
 use axum::Router;
 use axum::http::{HeaderValue, Method, header};
-use axum::routing::{get, patch, put};
+use axum::routing::{get, patch, post, put};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
@@ -40,11 +41,16 @@ fn cors(allowed_origins: &[String]) -> CorsLayer {
             Method::PUT,
             Method::DELETE,
         ])
-        .allow_headers([header::CONTENT_TYPE])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
 }
 
 fn api() -> Router<Service> {
     Router::new()
+        .route("/auth/{provider}/start", get(auth::start))
+        .route("/auth/{provider}/callback", get(auth::callback))
+        .route("/auth/token", post(auth::token))
+        .route("/auth/logout", post(auth::logout))
+        .route("/me", get(auth::me))
         .route("/habits", get(habit::list).post(habit::create))
         .route(
             "/habits/{id}",

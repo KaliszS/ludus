@@ -1,4 +1,3 @@
-use axum::extract::State;
 use axum::http::StatusCode;
 use chrono::{NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
@@ -12,7 +11,7 @@ use crate::domain::{
     RequirementProgress,
 };
 use crate::error::AppResult;
-use crate::service::Service;
+use crate::service::UserService;
 use crate::service::parse_period;
 use crate::service::plan::{CreateLevel, CreateRequirement, UpdateLevel, UpdateRequirement};
 
@@ -212,7 +211,7 @@ pub struct UpdateRequirementBody {
 }
 
 pub async fn list_levels(
-    State(service): State<Service>,
+    service: UserService,
     Query(query): Query<LevelQuery>,
 ) -> AppResult<Json<List<LevelResponse>>> {
     let period = query.period.as_deref().map(parse_period).transpose()?;
@@ -222,14 +221,14 @@ pub async fn list_levels(
 }
 
 pub async fn show_level(
-    State(service): State<Service>,
+    service: UserService,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<LevelResponse>> {
     Ok(Json(service.plan_level(id).await?.into()))
 }
 
 pub async fn create_level(
-    State(service): State<Service>,
+    service: UserService,
     Json(body): Json<CreateLevelBody>,
 ) -> AppResult<(StatusCode, Json<LevelResponse>)> {
     let level = service
@@ -242,7 +241,7 @@ pub async fn create_level(
 }
 
 pub async fn update_level(
-    State(service): State<Service>,
+    service: UserService,
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateLevelBody>,
 ) -> AppResult<Json<LevelResponse>> {
@@ -259,16 +258,13 @@ pub async fn update_level(
     Ok(Json(level.into()))
 }
 
-pub async fn remove_level(
-    State(service): State<Service>,
-    Path(id): Path<Uuid>,
-) -> AppResult<StatusCode> {
+pub async fn remove_level(service: UserService, Path(id): Path<Uuid>) -> AppResult<StatusCode> {
     service.delete_plan_level(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn list_requirements(
-    State(service): State<Service>,
+    service: UserService,
     Path(level_id): Path<Uuid>,
 ) -> AppResult<Json<List<RequirementResponse>>> {
     Ok(Json(
@@ -277,7 +273,7 @@ pub async fn list_requirements(
 }
 
 pub async fn create_requirement(
-    State(service): State<Service>,
+    service: UserService,
     Path(level_id): Path<Uuid>,
     Json(body): Json<CreateRequirementBody>,
 ) -> AppResult<(StatusCode, Json<RequirementResponse>)> {
@@ -296,7 +292,7 @@ pub async fn create_requirement(
 }
 
 pub async fn update_requirement(
-    State(service): State<Service>,
+    service: UserService,
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateRequirementBody>,
 ) -> AppResult<StatusCode> {
@@ -316,7 +312,7 @@ pub async fn update_requirement(
 }
 
 pub async fn remove_requirement(
-    State(service): State<Service>,
+    service: UserService,
     Path(id): Path<Uuid>,
 ) -> AppResult<StatusCode> {
     service.delete_requirement(id).await?;
@@ -324,7 +320,7 @@ pub async fn remove_requirement(
 }
 
 pub async fn progress(
-    State(service): State<Service>,
+    service: UserService,
     Query(query): Query<ProgressQuery>,
 ) -> AppResult<Json<ProgressResponse>> {
     let period = parse_period(query.period.as_deref().unwrap_or("week"))?;
@@ -333,7 +329,7 @@ pub async fn progress(
 }
 
 pub async fn history(
-    State(service): State<Service>,
+    service: UserService,
     Query(query): Query<HistoryQuery>,
 ) -> AppResult<Json<List<OutcomeResponse>>> {
     let period = parse_period(query.period.as_deref().unwrap_or("week"))?;

@@ -96,3 +96,16 @@ export interface NewHabit {
 
 /** null clears the field, undefined leaves it alone. */
 export type HabitPatch = Partial<NewHabit> & { archived?: boolean; position?: number };
+
+export interface User {
+	id: string;
+	email: string;
+	display_name: string;
+	avatar_url: string | null;
+}
+
+export interface SessionGrant {
+	token: string;
+	expires_at: string;
+	user: User;
+}

@@ -1,5 +1,4 @@
 use axum::body::Bytes;
-use axum::extract::State;
 use axum::http::StatusCode;
 use chrono::{Days, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
@@ -9,7 +8,7 @@ use super::dto::List;
 use super::extract::{Json, Path, Query};
 use crate::domain::Checkin;
 use crate::error::{AppError, AppResult};
-use crate::service::Service;
+use crate::service::UserService;
 
 const DEFAULT_WINDOW_DAYS: u64 = 365;
 
@@ -47,7 +46,7 @@ pub struct SetBody {
 }
 
 pub async fn list(
-    State(service): State<Service>,
+    service: UserService,
     Path(habit_id): Path<Uuid>,
     Query(query): Query<RangeQuery>,
 ) -> AppResult<Json<List<CheckinResponse>>> {
@@ -64,7 +63,7 @@ pub async fn list(
 
 /// The plain click sends no body at all, so an empty one is not an error.
 pub async fn list_all(
-    State(service): State<Service>,
+    service: UserService,
     Query(query): Query<RangeQuery>,
 ) -> AppResult<Json<List<UserCheckinResponse>>> {
     let to = query.to.unwrap_or_else(|| Utc::now().date_naive());
@@ -84,7 +83,7 @@ pub async fn list_all(
 }
 
 pub async fn set(
-    State(service): State<Service>,
+    service: UserService,
     Path((habit_id, day)): Path<(Uuid, NaiveDate)>,
     body: Bytes,
 ) -> AppResult<Json<CheckinResponse>> {
@@ -101,7 +100,7 @@ pub async fn set(
 }
 
 pub async fn remove(
-    State(service): State<Service>,
+    service: UserService,
     Path((habit_id, day)): Path<(Uuid, NaiveDate)>,
 ) -> AppResult<StatusCode> {
     service.unset_checkin(habit_id, day).await?;

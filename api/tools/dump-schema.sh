@@ -8,7 +8,7 @@ DB="ludus"
 OUT="api/schema"
 PG="docker compose exec -T postgres"
 
-auth="users sessions device_authorizations oauth_states"
+auth="users user_identities sessions device_authorizations oauth_states"
 habits="habits habit_checkins"
 plans="plan_levels plan_requirements plan_requirement_habits plan_tasks"
 goals="goals task_goals"

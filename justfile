@@ -5,8 +5,8 @@ default:
 
 # --- all services ---
 
-# Database, migrations, stand-in user and GUI dependencies
-setup: db-up api-migrate api-seed gui-install
+# Database, migrations and GUI dependencies
+setup: db-up api-migrate gui-install
     @echo "Ready. Run: just api-run  and  just gui-dev"
 
 # Everything that must pass before a commit. tui/ has not been started.
@@ -66,10 +66,6 @@ api-migration name:
 
 api-migrate: && api-schema
     cd api && diesel migration run
-
-# Insert the dev stand-in user that replaces auth for now
-api-seed:
-    docker compose exec -T postgres psql -q -U ludus -d ludus < api/dev_seed.sql
 
 api-rollback n="1": && api-schema
     cd api && diesel migration revert -n {{ n }}
