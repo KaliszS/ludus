@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Plus, Trash2, X } from '@lucide/svelte';
+	import { Archive, History, Plus, X } from '@lucide/svelte';
+	import LevelVersions from './LevelVersions.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -22,6 +23,7 @@
 	/** Requirement whose member list is open for editing. */
 	let editing = $state<string | null>(null);
 	let draft = $state<string[]>([]);
+	let showHistory = $state(false);
 
 	const byId = $derived(new Map(habits.active.map((habit) => [habit.id, habit])));
 	const hasQuantity = (ids: string[]) => ids.some((id) => byId.get(id)?.tracking === 'quantity');
@@ -47,11 +49,6 @@
 		await levels.setMembers(id, [...draft, ...hidden]);
 		editing = null;
 	}
-
-	async function remove() {
-		if (!confirm(`Delete level “${level.name}”?`)) return;
-		await levels.remove(level.id);
-	}
 </script>
 
 <Card>
@@ -61,7 +58,16 @@
 			value={level.name}
 			onchange={(raw) => levels.rename(level.id, raw)}
 		/>
-		<IconButton icon={Trash2} label="Delete level" tone="danger" onclick={remove} />
+		<IconButton
+			icon={History}
+			label={showHistory ? 'Hide history' : 'Show history'}
+			onclick={() => (showHistory = !showHistory)}
+		/>
+		<IconButton
+			icon={Archive}
+			label="Archive level (keeps its history)"
+			onclick={() => levels.setArchived(level.id, true)}
+		/>
 	</header>
 
 	<div class="mb-3">
@@ -70,6 +76,10 @@
 			value={level.period}
 			onchange={(period) => levels.setPeriod(level.id, period)}
 		/>
+		<p class="mt-2 px-1 text-[11px] text-muted">
+			A new quota, measure or set of habits applies from this {level.period} on. Earlier
+			{level.period}s keep the result they had.
+		</p>
 	</div>
 
 	<ul class="divide-y divide-line">
@@ -230,5 +240,10 @@
 			<Plus size={14} strokeWidth={2} />
 			Add requirement
 		</button>
+	{/if}
+	{#if showHistory}
+		<div class="mt-4 border-t border-line pt-4">
+			<LevelVersions levelId={level.id} />
+		</div>
 	{/if}
 </Card>

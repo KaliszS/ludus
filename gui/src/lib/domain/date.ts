@@ -29,10 +29,9 @@ export const fullLabel = (key: string) => FULL.format(parse(key));
 export const isFuture = (key: string) => key > today();
 
 /** The daemon's period_end is exclusive; humans expect the last day it covers. */
+export const monthDay = (key: string) => MONTH_DAY.format(parse(key));
+
 export function formatRange(start: string, endExclusive: string): string {
-	const from = parse(start);
-	const to = parse(shift(endExclusive, -1));
-	return from.getTime() === to.getTime()
-		? MONTH_DAY.format(from)
-		: `${MONTH_DAY.format(from)} – ${MONTH_DAY.format(to)}`;
+	const last = shift(endExclusive, -1);
+	return start === last ? monthDay(start) : `${monthDay(start)} – ${monthDay(last)}`;
 }

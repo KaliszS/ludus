@@ -1,3 +1,4 @@
+import { today } from '$lib/domain/date';
 import { BASE, body, collection, request } from './http';
 import type {
 	Account,
@@ -6,6 +7,7 @@ import type {
 	Measure,
 	Habit,
 	HabitPatch,
+	LevelVersions,
 	NewHabit,
 	Period,
 	Plan,
@@ -42,16 +44,22 @@ export const checkinsApi = {
 		request<void>(`/habits/${habitId}/checkins/${day}`, { method: 'DELETE' })
 };
 
+/** Edits land in the period this screen shows, which is the client's today. */
+const asOfToday = () => `on=${today()}`;
+
 export const levelsApi = {
-	list: (period?: Period) =>
-		collection<PlanLevel>(`/plan-levels${period ? `?period=${period}` : ''}`),
+	list: (archived = false) => collection<PlanLevel>(`/plan-levels?archived=${archived}`),
 	create: (name: string, period: Period) =>
 		request<PlanLevel>('/plan-levels', { method: 'POST', body: body({ name, period }) }),
-	update: (id: string, patch: { name?: string; period?: Period }) =>
-		request<PlanLevel>(`/plan-levels/${id}`, { method: 'PATCH', body: body(patch) }),
+	update: (id: string, patch: { name?: string; period?: Period; archived?: boolean }) =>
+		request<PlanLevel>(`/plan-levels/${id}?${asOfToday()}`, {
+			method: 'PATCH',
+			body: body(patch)
+		}),
 	remove: (id: string) => request<void>(`/plan-levels/${id}`, { method: 'DELETE' }),
 	requirements: (levelId: string) =>
 		collection<Requirement>(`/plan-levels/${levelId}/requirements`),
+	versions: (levelId: string) => request<LevelVersions>(`/plan-levels/${levelId}/versions`),
 	addRequirement: (
 		levelId: string,
 		habitIds: string[],
@@ -59,15 +67,20 @@ export const levelsApi = {
 		measure: Measure,
 		name: string | null
 	) =>
-		request<Requirement>(`/plan-levels/${levelId}/requirements`, {
+		request<Requirement>(`/plan-levels/${levelId}/requirements?${asOfToday()}`, {
 			method: 'POST',
 			body: body({ habit_ids: habitIds, quota, measure, name })
 		}),
 	updateRequirement: (
 		id: string,
 		patch: { habit_ids?: string[]; quota?: number; measure?: Measure; name?: string | null }
-	) => request<void>(`/plan-requirements/${id}`, { method: 'PATCH', body: body(patch) }),
-	removeRequirement: (id: string) => request<void>(`/plan-requirements/${id}`, { method: 'DELETE' })
+	) =>
+		request<void>(`/plan-requirements/${id}?${asOfToday()}`, {
+			method: 'PATCH',
+			body: body(patch)
+		}),
+	removeRequirement: (id: string) =>
+		request<void>(`/plan-requirements/${id}?${asOfToday()}`, { method: 'DELETE' })
 };
 
 export const planApi = {

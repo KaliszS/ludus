@@ -76,6 +76,7 @@ fn api() -> Router<Service> {
                 .patch(plan::update_level)
                 .delete(plan::remove_level),
         )
+        .route("/plan-levels/{id}/versions", get(plan::versions))
         .route(
             "/plan-levels/{id}/requirements",
             get(plan::list_requirements).post(plan::create_requirement),

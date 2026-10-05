@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use super::{UserService, check_weekdays, parse_tracking, require_name};
 use crate::domain::{Habit, Tracking};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::repo::habit::{self, HabitChanges, NewHabit};
 use crate::repo::plan;
 
@@ -88,14 +88,22 @@ impl UserService {
             .as_deref()
             .map(|v| require_name("name", v))
             .transpose()?;
-        let tracking = input
-            .tracking
-            .as_deref()
-            .map(parse_tracking)
-            .transpose()?
-            .map(|t| t.as_str().to_owned());
+        let tracking = input.tracking.as_deref().map(parse_tracking).transpose()?;
         if let Some(Some(days)) = input.weekdays.as_ref() {
             check_weekdays(days)?;
+        }
+
+        let mut conn = self.conn().await?;
+        // A binary check-in is stored as times = 1, which reads the same as a quantity
+        // of one, so that direction keeps history intact. The reverse would have to
+        // squash every recorded amount down to 1.
+        if tracking == Some(Tracking::Binary)
+            && habit::get(&mut conn, self.user_id, id).await?.tracking == Tracking::Quantity
+        {
+            return Err(AppError::invalid(
+                "tracking",
+                "a quantity habit cannot become binary without losing its amounts",
+            ));
         }
 
         let changes = HabitChanges {
@@ -104,13 +112,11 @@ impl UserService {
             icon: input.icon,
             color: input.color,
             unit: input.unit,
-            tracking,
+            tracking: tracking.map(|t| t.as_str().to_owned()),
             weekdays: input.weekdays.map(|days| days.and_then(to_column)),
             position: input.position,
             archived_at: input.archived.map(|on| on.then(Utc::now)),
         };
-
-        let mut conn = self.conn().await?;
         habit::update(&mut conn, self.user_id, id, changes).await
     }
 

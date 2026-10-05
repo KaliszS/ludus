@@ -6,14 +6,22 @@
 	}
 	let { outcomes }: Props = $props();
 
-	/** Level identity is stable across periods, so one row per level reads as a timeline. */
-	const levels = $derived(
-		outcomes.at(-1)?.levels.map((level) => ({
-			id: level.id,
-			name: level.name,
-			cells: outcomes.map((outcome) => outcome.levels.find((item) => item.id === level.id))
-		})) ?? []
-	);
+	/** One row per level that appears in any period, so an archived level keeps its
+	 *  timeline even though the current period no longer has it. Archived ones go last. */
+	const levels = $derived.by(() => {
+		const seen = new Map<string, { id: string; name: string; archived: boolean }>();
+		for (const outcome of outcomes) {
+			for (const level of outcome.levels) {
+				seen.set(level.id, { id: level.id, name: level.name, archived: level.archived });
+			}
+		}
+		return [...seen.values()]
+			.sort((a, b) => Number(a.archived) - Number(b.archived))
+			.map((level) => ({
+				...level,
+				cells: outcomes.map((outcome) => outcome.levels.find((item) => item.id === level.id))
+			}));
+	});
 
 	const met = $derived(
 		outcomes.filter((outcome) => outcome.levels.some((level) => level.met)).length
@@ -24,9 +32,15 @@
 	{#each levels as level (level.id)}
 		<div>
 			<div class="mb-1.5 flex items-baseline justify-between">
-				<span class="text-xs font-semibold tracking-wide uppercase">{level.name}</span>
+				<span class="text-xs font-semibold tracking-wide uppercase">
+					{level.name}
+					{#if level.archived}
+						<span class="ml-1 font-normal tracking-normal text-muted normal-case">archived</span>
+					{/if}
+				</span>
+				<!-- Only periods the level existed in: weeks before it began are not misses. -->
 				<span class="text-[11px] text-muted tabular-nums">
-					{level.cells.filter((cell) => cell?.met).length}/{level.cells.length}
+					{level.cells.filter((cell) => cell?.met).length}/{level.cells.filter(Boolean).length}
 				</span>
 			</div>
 			<div class="flex gap-1">

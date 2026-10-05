@@ -7,7 +7,8 @@ class Toast {
 	show(message: string) {
 		this.message = message;
 		clearTimeout(this.timer);
-		this.timer = setTimeout(() => (this.message = null), 4000);
+		// Long enough to read: four seconds, or about 50 ms a character for longer ones.
+		this.timer = setTimeout(() => (this.message = null), Math.max(4000, message.length * 50));
 	}
 
 	dismiss() {

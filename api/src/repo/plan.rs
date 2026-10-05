@@ -1,5 +1,6 @@
+use chrono::NaiveDate;
 use diesel::prelude::*;
-use diesel_async::RunQueryDsl;
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
 use super::pool::DbConn;
@@ -14,6 +15,7 @@ pub struct LevelRow {
     pub name: String,
     pub period: String,
     pub position: f64,
+    pub archived_on: Option<NaiveDate>,
 }
 
 impl From<LevelRow> for PlanLevel {
@@ -23,6 +25,7 @@ impl From<LevelRow> for PlanLevel {
             name: row.name,
             period: Period::parse(&row.period).unwrap_or(Period::Week),
             position: row.position,
+            archived_on: row.archived_on,
         }
     }
 }
@@ -43,11 +46,15 @@ pub struct LevelChanges {
     pub name: Option<String>,
     pub period: Option<String>,
     pub position: Option<f64>,
+    pub archived_on: Option<Option<NaiveDate>>,
 }
 
 impl LevelChanges {
     fn is_empty(&self) -> bool {
-        self.name.is_none() && self.period.is_none() && self.position.is_none()
+        self.name.is_none()
+            && self.period.is_none()
+            && self.position.is_none()
+            && self.archived_on.is_none()
     }
 }
 
@@ -61,10 +68,14 @@ pub async fn list_levels(
     conn: &mut DbConn,
     user_id: Uuid,
     period: Option<Period>,
+    include_archived: bool,
 ) -> AppResult<Vec<PlanLevel>> {
     let mut query = owned(user_id);
     if let Some(period) = period {
         query = query.filter(plan_levels::period.eq(period.as_str()));
+    }
+    if !include_archived {
+        query = query.filter(plan_levels::archived_on.is_null());
     }
     let rows = query
         .order((plan_levels::position.asc(), plan_levels::name.asc()))
@@ -150,6 +161,8 @@ pub struct RequirementRow {
     pub quota: f64,
     pub measure: String,
     pub position: f64,
+    pub valid_from: NaiveDate,
+    pub valid_to: Option<NaiveDate>,
 }
 
 #[derive(Insertable)]
@@ -161,6 +174,7 @@ pub struct NewRequirement {
     pub quota: f64,
     pub measure: String,
     pub position: f64,
+    pub valid_from: NaiveDate,
 }
 
 #[derive(AsChangeset, Default)]
@@ -219,19 +233,92 @@ pub async fn requirements_for(
             quota: row.quota,
             measure: Measure::parse(&row.measure).unwrap_or(Measure::Amount),
             position: row.position,
+            valid_from: row.valid_from,
+            valid_to: row.valid_to,
         })
         .collect())
 }
 
-/// The level a requirement belongs to, scoped to its owner.
+/// The level a requirement belongs to, scoped to its owner. Only the version in
+/// force can be changed; earlier ones are the record of what was asked.
 pub async fn requirement_level(conn: &mut DbConn, user_id: Uuid, id: Uuid) -> AppResult<Uuid> {
     Ok(plan_requirements::table
         .inner_join(plan_levels::table)
         .filter(plan_requirements::id.eq(id))
+        .filter(plan_requirements::valid_to.is_null())
         .filter(plan_levels::user_id.eq(user_id))
         .select(plan_requirements::level_id)
         .first(conn)
         .await?)
+}
+
+/// Ends a version at `valid_to`, the start of the period the change happens in.
+pub async fn close_requirement(conn: &mut DbConn, id: Uuid, valid_to: NaiveDate) -> AppResult<()> {
+    diesel::update(plan_requirements::table.find(id))
+        .set(plan_requirements::valid_to.eq(valid_to))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// Closes one version and opens its successor in the same transaction, so there is
+/// never a moment with neither in force, or with both.
+pub async fn replace_requirement(
+    conn: &mut DbConn,
+    old: Uuid,
+    next: NewRequirement,
+    habit_ids: &[Uuid],
+) -> AppResult<Uuid> {
+    let id = next.id;
+    let valid_to = next.valid_from;
+    conn.transaction(async |conn| {
+        diesel::update(plan_requirements::table.find(old))
+            .set(plan_requirements::valid_to.eq(valid_to))
+            .execute(conn)
+            .await?;
+        diesel::insert_into(plan_requirements::table)
+            .values(next)
+            .execute(conn)
+            .await?;
+        insert_members(conn, id, habit_ids).await?;
+        Ok::<_, diesel::result::Error>(())
+    })
+    .await?;
+    Ok(id)
+}
+
+/// Whether anything was asked of this level before `start`, which is what makes
+/// reinterpreting its periods rewrite history.
+pub async fn level_has_history(
+    conn: &mut DbConn,
+    level_id: Uuid,
+    start: NaiveDate,
+) -> AppResult<bool> {
+    Ok(diesel::select(diesel::dsl::exists(
+        plan_requirements::table
+            .filter(plan_requirements::level_id.eq(level_id))
+            .filter(
+                plan_requirements::valid_from
+                    .lt(start)
+                    .or(plan_requirements::valid_to.is_not_null()),
+            ),
+    ))
+    .get_result(conn)
+    .await?)
+}
+
+/// A level that switches period before it has any history starts over on the new
+/// period's boundary.
+pub async fn realign_requirements(
+    conn: &mut DbConn,
+    level_id: Uuid,
+    start: NaiveDate,
+) -> AppResult<()> {
+    diesel::update(plan_requirements::table.filter(plan_requirements::level_id.eq(level_id)))
+        .set(plan_requirements::valid_from.eq(start))
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 async fn replace_members(conn: &mut DbConn, id: Uuid, habit_ids: &[Uuid]) -> AppResult<()> {
@@ -240,7 +327,14 @@ async fn replace_members(conn: &mut DbConn, id: Uuid, habit_ids: &[Uuid]) -> App
     )
     .execute(conn)
     .await?;
+    Ok(insert_members(conn, id, habit_ids).await?)
+}
 
+async fn insert_members(
+    conn: &mut diesel_async::AsyncPgConnection,
+    id: Uuid,
+    habit_ids: &[Uuid],
+) -> Result<(), diesel::result::Error> {
     let values: Vec<_> = habit_ids
         .iter()
         .map(|habit_id| {

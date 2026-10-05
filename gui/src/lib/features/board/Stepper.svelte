@@ -65,10 +65,13 @@
 		<button
 			onclick={open}
 			aria-label="Set exact amount"
-			class="min-w-11 rounded-full px-1 text-center text-sm font-semibold tabular-nums transition"
+			class="flex min-w-11 items-baseline justify-center gap-1 rounded-full px-1 text-sm
+			       font-semibold tabular-nums transition"
 			style:color={value > 0 ? accent : 'var(--color-muted)'}
 		>
-			{value}{unit ? ` ${unit.slice(0, 4)}` : ''}
+			{value}
+			<!-- Whole words read; only a really long unit gets an ellipsis, never a cut word. -->
+			{#if unit}<span class="max-w-[9ch] truncate">{unit}</span>{/if}
 		</button>
 	{/if}
 
