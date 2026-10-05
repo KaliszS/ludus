@@ -1,0 +1,21 @@
+ALTER TABLE plans RENAME TO plan_levels;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_created_at_not_null TO plan_levels_created_at_not_null;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_id_not_null TO plan_levels_id_not_null;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_name_not_null TO plan_levels_name_not_null;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_period_check TO plan_levels_period_check;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_period_not_null TO plan_levels_period_not_null;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_pkey TO plan_levels_pkey;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_position_not_null TO plan_levels_position_not_null;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_updated_at_not_null TO plan_levels_updated_at_not_null;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_user_id_fkey TO plan_levels_user_id_fkey;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_user_id_not_null TO plan_levels_user_id_not_null;
+ALTER TABLE plan_levels RENAME CONSTRAINT plans_user_id_period_name_key TO plan_levels_user_id_period_name_key;
+ALTER INDEX idx_plans_user RENAME TO idx_plan_levels_user;
+
+ALTER TABLE plan_requirements RENAME COLUMN plan_id TO level_id;
+ALTER TABLE plan_requirements RENAME CONSTRAINT plan_requirements_plan_id_fkey TO plan_requirements_level_id_fkey;
+ALTER TABLE plan_requirements RENAME CONSTRAINT plan_requirements_plan_id_not_null TO plan_requirements_level_id_not_null;
+ALTER TABLE plan_tasks RENAME COLUMN plan_id TO level_id;
+ALTER TABLE plan_tasks RENAME CONSTRAINT plan_tasks_plan_id_fkey TO plan_tasks_level_id_fkey;
+ALTER TABLE plan_tasks RENAME CONSTRAINT plan_tasks_plan_id_not_null TO plan_tasks_level_id_not_null;
+ALTER INDEX idx_plan_requirements_plan RENAME TO idx_plan_requirements_level;

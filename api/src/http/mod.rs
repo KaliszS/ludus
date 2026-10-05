@@ -66,25 +66,25 @@ fn api() -> Router<Service> {
             "/habits/{id}/checkins/{day}",
             put(checkin::set).delete(checkin::remove),
         )
+        .route("/plans", get(plan::list).post(plan::create))
         .route(
-            "/plan-levels",
-            get(plan::list_levels).post(plan::create_level),
+            "/plans/{id}",
+            get(plan::show).patch(plan::update).delete(plan::remove),
+        )
+        .route("/plans/{id}/versions", get(plan::versions))
+        .route("/plans/{id}/tiers", post(plan::create_tier))
+        .route(
+            "/plan-tiers/{id}",
+            patch(plan::update_tier).delete(plan::retire_tier),
         )
         .route(
-            "/plan-levels/{id}",
-            get(plan::show_level)
-                .patch(plan::update_level)
-                .delete(plan::remove_level),
-        )
-        .route("/plan-levels/{id}/versions", get(plan::versions))
-        .route(
-            "/plan-levels/{id}/requirements",
+            "/plans/{id}/requirements",
             get(plan::list_requirements).post(plan::create_requirement),
         )
         .route(
             "/plan-requirements/{id}",
             patch(plan::update_requirement).delete(plan::remove_requirement),
         )
-        .route("/plan", get(plan::progress))
-        .route("/plan/history", get(plan::history))
+        .route("/progress", get(plan::progress))
+        .route("/progress/history", get(plan::history))
 }

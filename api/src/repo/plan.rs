@@ -1,16 +1,20 @@
+use std::collections::HashMap;
+
 use chrono::NaiveDate;
 use diesel::prelude::*;
-use diesel_async::{AsyncConnection, RunQueryDsl};
+use diesel_async::{AsyncConnection, AsyncPgConnection, RunQueryDsl};
 use uuid::Uuid;
 
 use super::pool::DbConn;
-use super::schema::{plan_levels, plan_requirement_habits, plan_requirements};
-use crate::domain::{Measure, Period, PlanLevel, Requirement};
+use super::schema::{
+    plan_requirement_habits, plan_requirement_quotas, plan_requirements, plan_tiers, plans,
+};
+use crate::domain::{Measure, Medal, Period, Plan, Requirement, Tier, TierQuota};
 use crate::error::{AppError, AppResult};
 
 #[derive(Queryable, Selectable)]
-#[diesel(table_name = plan_levels, check_for_backend(diesel::pg::Pg))]
-pub struct LevelRow {
+#[diesel(table_name = plans, check_for_backend(diesel::pg::Pg))]
+pub struct PlanRow {
     pub id: Uuid,
     pub name: String,
     pub period: String,
@@ -18,21 +22,9 @@ pub struct LevelRow {
     pub archived_on: Option<NaiveDate>,
 }
 
-impl From<LevelRow> for PlanLevel {
-    fn from(row: LevelRow) -> Self {
-        Self {
-            id: row.id,
-            name: row.name,
-            period: Period::parse(&row.period).unwrap_or(Period::Week),
-            position: row.position,
-            archived_on: row.archived_on,
-        }
-    }
-}
-
 #[derive(Insertable)]
-#[diesel(table_name = plan_levels)]
-pub struct NewLevel {
+#[diesel(table_name = plans)]
+pub struct NewPlan {
     pub id: Uuid,
     pub user_id: Uuid,
     pub name: String,
@@ -41,15 +33,15 @@ pub struct NewLevel {
 }
 
 #[derive(AsChangeset, Default)]
-#[diesel(table_name = plan_levels)]
-pub struct LevelChanges {
+#[diesel(table_name = plans)]
+pub struct PlanChanges {
     pub name: Option<String>,
     pub period: Option<String>,
     pub position: Option<f64>,
     pub archived_on: Option<Option<NaiveDate>>,
 }
 
-impl LevelChanges {
+impl PlanChanges {
     fn is_empty(&self) -> bool {
         self.name.is_none()
             && self.period.is_none()
@@ -58,77 +50,157 @@ impl LevelChanges {
     }
 }
 
-fn owned(user_id: Uuid) -> plan_levels::BoxedQuery<'static, diesel::pg::Pg> {
-    plan_levels::table
-        .filter(plan_levels::user_id.eq(user_id))
-        .into_boxed()
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = plan_tiers, check_for_backend(diesel::pg::Pg))]
+struct TierRow {
+    id: Uuid,
+    plan_id: Uuid,
+    name: Option<String>,
+    medal: Option<String>,
+    position: f64,
+    retired_on: Option<NaiveDate>,
 }
 
-pub async fn list_levels(
+impl From<TierRow> for Tier {
+    fn from(row: TierRow) -> Self {
+        Self {
+            id: row.id,
+            name: row.name,
+            medal: row.medal.as_deref().and_then(Medal::parse),
+            position: row.position,
+            retired_on: row.retired_on,
+        }
+    }
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = plan_tiers)]
+pub struct NewTier {
+    pub id: Uuid,
+    pub plan_id: Uuid,
+    pub name: Option<String>,
+    pub medal: Option<String>,
+    pub position: f64,
+}
+
+#[derive(AsChangeset, Default)]
+#[diesel(table_name = plan_tiers)]
+pub struct TierChanges {
+    pub name: Option<Option<String>>,
+    pub medal: Option<Option<String>>,
+    pub retired_on: Option<Option<NaiveDate>>,
+}
+
+fn owned(user_id: Uuid) -> plans::BoxedQuery<'static, diesel::pg::Pg> {
+    plans::table.filter(plans::user_id.eq(user_id)).into_boxed()
+}
+
+/// One query for the tiers of every plan listed, not one per plan.
+async fn with_tiers(conn: &mut DbConn, rows: Vec<PlanRow>) -> AppResult<Vec<Plan>> {
+    let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+    let tiers: Vec<TierRow> = plan_tiers::table
+        .filter(plan_tiers::plan_id.eq_any(&ids))
+        .order((plan_tiers::position.asc(), plan_tiers::created_at.asc()))
+        .select(TierRow::as_select())
+        .load(conn)
+        .await?;
+    let mut by_plan: HashMap<Uuid, Vec<Tier>> = HashMap::new();
+    for row in tiers {
+        by_plan.entry(row.plan_id).or_default().push(row.into());
+    }
+
+    Ok(rows
+        .into_iter()
+        .map(|row| Plan {
+            tiers: by_plan.remove(&row.id).unwrap_or_default(),
+            id: row.id,
+            name: row.name,
+            period: Period::parse(&row.period).unwrap_or(Period::Week),
+            position: row.position,
+            archived_on: row.archived_on,
+        })
+        .collect())
+}
+
+pub async fn list(
     conn: &mut DbConn,
     user_id: Uuid,
     period: Option<Period>,
     include_archived: bool,
-) -> AppResult<Vec<PlanLevel>> {
+) -> AppResult<Vec<Plan>> {
     let mut query = owned(user_id);
     if let Some(period) = period {
-        query = query.filter(plan_levels::period.eq(period.as_str()));
+        query = query.filter(plans::period.eq(period.as_str()));
     }
     if !include_archived {
-        query = query.filter(plan_levels::archived_on.is_null());
+        query = query.filter(plans::archived_on.is_null());
     }
     let rows = query
-        .order((plan_levels::position.asc(), plan_levels::name.asc()))
-        .select(LevelRow::as_select())
+        .order((plans::position.asc(), plans::name.asc()))
+        .select(PlanRow::as_select())
         .load(conn)
         .await?;
-    Ok(rows.into_iter().map(PlanLevel::from).collect())
+    with_tiers(conn, rows).await
 }
 
-pub async fn get_level(conn: &mut DbConn, user_id: Uuid, id: Uuid) -> AppResult<PlanLevel> {
+pub async fn get(conn: &mut DbConn, user_id: Uuid, id: Uuid) -> AppResult<Plan> {
     let row = owned(user_id)
-        .filter(plan_levels::id.eq(id))
-        .select(LevelRow::as_select())
+        .filter(plans::id.eq(id))
+        .select(PlanRow::as_select())
         .first(conn)
         .await?;
-    Ok(row.into())
+    one(with_tiers(conn, vec![row]).await?)
 }
 
-pub async fn insert_level(conn: &mut DbConn, level: NewLevel) -> AppResult<PlanLevel> {
-    let row = diesel::insert_into(plan_levels::table)
-        .values(level)
-        .returning(LevelRow::as_select())
-        .get_result(conn)
+fn one(mut plans: Vec<Plan>) -> AppResult<Plan> {
+    plans.pop().ok_or(AppError::NotFound)
+}
+
+/// A plan never exists without its base tier, the one its streak is judged on.
+pub async fn insert(conn: &mut DbConn, plan: NewPlan, base: NewTier) -> AppResult<Plan> {
+    let row = conn
+        .transaction(async |conn| {
+            let row = diesel::insert_into(plans::table)
+                .values(plan)
+                .returning(PlanRow::as_select())
+                .get_result(conn)
+                .await?;
+            diesel::insert_into(plan_tiers::table)
+                .values(base)
+                .execute(conn)
+                .await?;
+            Ok::<_, diesel::result::Error>(row)
+        })
         .await?;
-    Ok(row.into())
+    one(with_tiers(conn, vec![row]).await?)
 }
 
-pub async fn update_level(
+pub async fn update(
     conn: &mut DbConn,
     user_id: Uuid,
     id: Uuid,
-    changes: LevelChanges,
-) -> AppResult<PlanLevel> {
+    changes: PlanChanges,
+) -> AppResult<Plan> {
     if changes.is_empty() {
-        return get_level(conn, user_id, id).await;
+        return get(conn, user_id, id).await;
     }
     let row = diesel::update(
-        plan_levels::table
-            .filter(plan_levels::id.eq(id))
-            .filter(plan_levels::user_id.eq(user_id)),
+        plans::table
+            .filter(plans::id.eq(id))
+            .filter(plans::user_id.eq(user_id)),
     )
     .set(changes)
-    .returning(LevelRow::as_select())
+    .returning(PlanRow::as_select())
     .get_result(conn)
     .await?;
-    Ok(row.into())
+    one(with_tiers(conn, vec![row]).await?)
 }
 
-pub async fn delete_level(conn: &mut DbConn, user_id: Uuid, id: Uuid) -> AppResult<()> {
+pub async fn delete(conn: &mut DbConn, user_id: Uuid, id: Uuid) -> AppResult<()> {
     let affected = diesel::delete(
-        plan_levels::table
-            .filter(plan_levels::id.eq(id))
-            .filter(plan_levels::user_id.eq(user_id)),
+        plans::table
+            .filter(plans::id.eq(id))
+            .filter(plans::user_id.eq(user_id)),
     )
     .execute(conn)
     .await?;
@@ -138,27 +210,51 @@ pub async fn delete_level(conn: &mut DbConn, user_id: Uuid, id: Uuid) -> AppResu
     Ok(())
 }
 
-pub async fn next_level_position(
-    conn: &mut DbConn,
-    user_id: Uuid,
-    period: Period,
-) -> AppResult<f64> {
-    let highest: Option<f64> = plan_levels::table
-        .filter(plan_levels::user_id.eq(user_id))
-        .filter(plan_levels::period.eq(period.as_str()))
-        .select(diesel::dsl::max(plan_levels::position))
+pub async fn next_position(conn: &mut DbConn, user_id: Uuid, period: Period) -> AppResult<f64> {
+    let highest: Option<f64> = plans::table
+        .filter(plans::user_id.eq(user_id))
+        .filter(plans::period.eq(period.as_str()))
+        .select(diesel::dsl::max(plans::position))
         .first(conn)
         .await?;
     Ok(highest.unwrap_or(0.0) + 100.0)
+}
+
+/// The plan a live tier belongs to, scoped to its owner. Retired tiers are part of
+/// the record and cannot be changed.
+pub async fn tier_plan(conn: &mut DbConn, user_id: Uuid, tier_id: Uuid) -> AppResult<Uuid> {
+    Ok(plan_tiers::table
+        .inner_join(plans::table)
+        .filter(plan_tiers::id.eq(tier_id))
+        .filter(plan_tiers::retired_on.is_null())
+        .filter(plans::user_id.eq(user_id))
+        .select(plan_tiers::plan_id)
+        .first(conn)
+        .await?)
+}
+
+pub async fn insert_tier(conn: &mut DbConn, tier: NewTier) -> AppResult<()> {
+    diesel::insert_into(plan_tiers::table)
+        .values(tier)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+pub async fn update_tier(conn: &mut DbConn, id: Uuid, changes: TierChanges) -> AppResult<()> {
+    diesel::update(plan_tiers::table.find(id))
+        .set(changes)
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = plan_requirements, check_for_backend(diesel::pg::Pg))]
 pub struct RequirementRow {
     pub id: Uuid,
-    pub level_id: Uuid,
+    pub plan_id: Uuid,
     pub name: Option<String>,
-    pub quota: f64,
     pub measure: String,
     pub position: f64,
     pub valid_from: NaiveDate,
@@ -169,9 +265,8 @@ pub struct RequirementRow {
 #[diesel(table_name = plan_requirements)]
 pub struct NewRequirement {
     pub id: Uuid,
-    pub level_id: Uuid,
+    pub plan_id: Uuid,
     pub name: Option<String>,
-    pub quota: f64,
     pub measure: String,
     pub position: f64,
     pub valid_from: NaiveDate,
@@ -181,26 +276,19 @@ pub struct NewRequirement {
 #[diesel(table_name = plan_requirements)]
 pub struct RequirementChanges {
     pub name: Option<Option<String>>,
-    pub quota: Option<f64>,
     pub measure: Option<String>,
     pub position: Option<f64>,
 }
 
 impl RequirementChanges {
     fn is_empty(&self) -> bool {
-        self.name.is_none()
-            && self.quota.is_none()
-            && self.measure.is_none()
-            && self.position.is_none()
+        self.name.is_none() && self.measure.is_none() && self.position.is_none()
     }
 }
 
-pub async fn requirements_for(
-    conn: &mut DbConn,
-    level_ids: &[Uuid],
-) -> AppResult<Vec<Requirement>> {
+pub async fn requirements_for(conn: &mut DbConn, plan_ids: &[Uuid]) -> AppResult<Vec<Requirement>> {
     let rows: Vec<RequirementRow> = plan_requirements::table
-        .filter(plan_requirements::level_id.eq_any(level_ids))
+        .filter(plan_requirements::plan_id.eq_any(plan_ids))
         .order((
             plan_requirements::position.asc(),
             plan_requirements::id.asc(),
@@ -218,6 +306,18 @@ pub async fn requirements_for(
         ))
         .load(conn)
         .await?;
+    // In tier order, so a requirement's first quota is its lowest.
+    let quotas: Vec<(Uuid, Uuid, f64)> = plan_requirement_quotas::table
+        .inner_join(plan_tiers::table)
+        .filter(plan_requirement_quotas::requirement_id.eq_any(&ids))
+        .order((plan_tiers::position.asc(), plan_tiers::created_at.asc()))
+        .select((
+            plan_requirement_quotas::requirement_id,
+            plan_requirement_quotas::tier_id,
+            plan_requirement_quotas::quota,
+        ))
+        .load(conn)
+        .await?;
 
     Ok(rows
         .into_iter()
@@ -227,10 +327,17 @@ pub async fn requirements_for(
                 .filter(|(requirement_id, _)| *requirement_id == row.id)
                 .map(|(_, habit_id)| *habit_id)
                 .collect(),
+            quotas: quotas
+                .iter()
+                .filter(|(requirement_id, _, _)| *requirement_id == row.id)
+                .map(|(_, tier_id, quota)| TierQuota {
+                    tier_id: *tier_id,
+                    quota: *quota,
+                })
+                .collect(),
             id: row.id,
-            level_id: row.level_id,
+            plan_id: row.plan_id,
             name: row.name,
-            quota: row.quota,
             measure: Measure::parse(&row.measure).unwrap_or(Measure::Amount),
             position: row.position,
             valid_from: row.valid_from,
@@ -239,15 +346,15 @@ pub async fn requirements_for(
         .collect())
 }
 
-/// The level a requirement belongs to, scoped to its owner. Only the version in
+/// The plan a requirement belongs to, scoped to its owner. Only the version in
 /// force can be changed; earlier ones are the record of what was asked.
-pub async fn requirement_level(conn: &mut DbConn, user_id: Uuid, id: Uuid) -> AppResult<Uuid> {
+pub async fn requirement_plan(conn: &mut DbConn, user_id: Uuid, id: Uuid) -> AppResult<Uuid> {
     Ok(plan_requirements::table
-        .inner_join(plan_levels::table)
+        .inner_join(plans::table)
         .filter(plan_requirements::id.eq(id))
         .filter(plan_requirements::valid_to.is_null())
-        .filter(plan_levels::user_id.eq(user_id))
-        .select(plan_requirements::level_id)
+        .filter(plans::user_id.eq(user_id))
+        .select(plan_requirements::plan_id)
         .first(conn)
         .await?)
 }
@@ -261,6 +368,26 @@ pub async fn close_requirement(conn: &mut DbConn, id: Uuid, valid_to: NaiveDate)
     Ok(())
 }
 
+/// A requirement is its row, its habits and its quotas; it lands whole or not at all.
+pub async fn insert_requirement(
+    conn: &mut DbConn,
+    requirement: NewRequirement,
+    habit_ids: &[Uuid],
+    quotas: &[TierQuota],
+) -> AppResult<Uuid> {
+    let id = requirement.id;
+    conn.transaction(async |conn| {
+        diesel::insert_into(plan_requirements::table)
+            .values(requirement)
+            .execute(conn)
+            .await?;
+        insert_members(conn, id, habit_ids).await?;
+        insert_quotas(conn, id, quotas).await
+    })
+    .await?;
+    Ok(id)
+}
+
 /// Closes one version and opens its successor in the same transaction, so there is
 /// never a moment with neither in force, or with both.
 pub async fn replace_requirement(
@@ -268,6 +395,7 @@ pub async fn replace_requirement(
     old: Uuid,
     next: NewRequirement,
     habit_ids: &[Uuid],
+    quotas: &[TierQuota],
 ) -> AppResult<Uuid> {
     let id = next.id;
     let valid_to = next.valid_from;
@@ -281,57 +409,52 @@ pub async fn replace_requirement(
             .execute(conn)
             .await?;
         insert_members(conn, id, habit_ids).await?;
-        Ok::<_, diesel::result::Error>(())
+        insert_quotas(conn, id, quotas).await
     })
     .await?;
     Ok(id)
 }
 
-/// Whether anything was asked of this level before `start`, which is what makes
-/// reinterpreting its periods rewrite history.
-pub async fn level_has_history(
+pub async fn update_requirement(
     conn: &mut DbConn,
-    level_id: Uuid,
-    start: NaiveDate,
-) -> AppResult<bool> {
-    Ok(diesel::select(diesel::dsl::exists(
-        plan_requirements::table
-            .filter(plan_requirements::level_id.eq(level_id))
-            .filter(
-                plan_requirements::valid_from
-                    .lt(start)
-                    .or(plan_requirements::valid_to.is_not_null()),
-            ),
-    ))
-    .get_result(conn)
-    .await?)
-}
-
-/// A level that switches period before it has any history starts over on the new
-/// period's boundary.
-pub async fn realign_requirements(
-    conn: &mut DbConn,
-    level_id: Uuid,
-    start: NaiveDate,
+    id: Uuid,
+    changes: RequirementChanges,
+    habit_ids: Option<&[Uuid]>,
+    quotas: Option<&[TierQuota]>,
 ) -> AppResult<()> {
-    diesel::update(plan_requirements::table.filter(plan_requirements::level_id.eq(level_id)))
-        .set(plan_requirements::valid_from.eq(start))
-        .execute(conn)
-        .await?;
+    conn.transaction(async |conn| {
+        if !changes.is_empty() {
+            diesel::update(plan_requirements::table.find(id))
+                .set(changes)
+                .execute(conn)
+                .await?;
+        }
+        if let Some(habit_ids) = habit_ids {
+            diesel::delete(
+                plan_requirement_habits::table
+                    .filter(plan_requirement_habits::requirement_id.eq(id)),
+            )
+            .execute(conn)
+            .await?;
+            insert_members(conn, id, habit_ids).await?;
+        }
+        if let Some(quotas) = quotas {
+            diesel::delete(
+                plan_requirement_quotas::table
+                    .filter(plan_requirement_quotas::requirement_id.eq(id)),
+            )
+            .execute(conn)
+            .await?;
+            insert_quotas(conn, id, quotas).await?;
+        }
+        Ok::<_, diesel::result::Error>(())
+    })
+    .await?;
     Ok(())
 }
 
-async fn replace_members(conn: &mut DbConn, id: Uuid, habit_ids: &[Uuid]) -> AppResult<()> {
-    diesel::delete(
-        plan_requirement_habits::table.filter(plan_requirement_habits::requirement_id.eq(id)),
-    )
-    .execute(conn)
-    .await?;
-    Ok(insert_members(conn, id, habit_ids).await?)
-}
-
 async fn insert_members(
-    conn: &mut diesel_async::AsyncPgConnection,
+    conn: &mut AsyncPgConnection,
     id: Uuid,
     habit_ids: &[Uuid],
 ) -> Result<(), diesel::result::Error> {
@@ -344,7 +467,6 @@ async fn insert_members(
             )
         })
         .collect();
-
     diesel::insert_into(plan_requirement_habits::table)
         .values(values)
         .execute(conn)
@@ -352,35 +474,55 @@ async fn insert_members(
     Ok(())
 }
 
-pub async fn insert_requirement(
-    conn: &mut DbConn,
-    requirement: NewRequirement,
-    habit_ids: &[Uuid],
-) -> AppResult<Uuid> {
-    let id = requirement.id;
-    diesel::insert_into(plan_requirements::table)
-        .values(requirement)
+async fn insert_quotas(
+    conn: &mut AsyncPgConnection,
+    id: Uuid,
+    quotas: &[TierQuota],
+) -> Result<(), diesel::result::Error> {
+    let values: Vec<_> = quotas
+        .iter()
+        .map(|quota| {
+            (
+                plan_requirement_quotas::requirement_id.eq(id),
+                plan_requirement_quotas::tier_id.eq(quota.tier_id),
+                plan_requirement_quotas::quota.eq(quota.quota),
+            )
+        })
+        .collect();
+    diesel::insert_into(plan_requirement_quotas::table)
+        .values(values)
         .execute(conn)
         .await?;
-    replace_members(conn, id, habit_ids).await?;
-    Ok(id)
+    Ok(())
 }
 
-pub async fn update_requirement(
+/// Whether anything was asked of this plan before `start`, which is what makes
+/// reinterpreting its periods rewrite history.
+pub async fn has_history(conn: &mut DbConn, plan_id: Uuid, start: NaiveDate) -> AppResult<bool> {
+    Ok(diesel::select(diesel::dsl::exists(
+        plan_requirements::table
+            .filter(plan_requirements::plan_id.eq(plan_id))
+            .filter(
+                plan_requirements::valid_from
+                    .lt(start)
+                    .or(plan_requirements::valid_to.is_not_null()),
+            ),
+    ))
+    .get_result(conn)
+    .await?)
+}
+
+/// A plan that switches period before it has any history starts over on the new
+/// period's boundary.
+pub async fn realign_requirements(
     conn: &mut DbConn,
-    id: Uuid,
-    changes: RequirementChanges,
-    habit_ids: Option<&[Uuid]>,
+    plan_id: Uuid,
+    start: NaiveDate,
 ) -> AppResult<()> {
-    if !changes.is_empty() {
-        diesel::update(plan_requirements::table.filter(plan_requirements::id.eq(id)))
-            .set(changes)
-            .execute(conn)
-            .await?;
-    }
-    if let Some(habit_ids) = habit_ids {
-        replace_members(conn, id, habit_ids).await?;
-    }
+    diesel::update(plan_requirements::table.filter(plan_requirements::plan_id.eq(plan_id)))
+        .set(plan_requirements::valid_from.eq(start))
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
@@ -394,9 +536,9 @@ pub async fn delete_requirement(conn: &mut DbConn, id: Uuid) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn next_requirement_position(conn: &mut DbConn, level_id: Uuid) -> AppResult<f64> {
+pub async fn next_requirement_position(conn: &mut DbConn, plan_id: Uuid) -> AppResult<f64> {
     let highest: Option<f64> = plan_requirements::table
-        .filter(plan_requirements::level_id.eq(level_id))
+        .filter(plan_requirements::plan_id.eq(plan_id))
         .select(diesel::dsl::max(plan_requirements::position))
         .first(conn)
         .await?;
@@ -404,15 +546,15 @@ pub async fn next_requirement_position(conn: &mut DbConn, level_id: Uuid) -> App
 }
 
 /// A habit deletion cascades to the member rows but leaves the requirement behind.
-/// One with no members can never be satisfied, so the level would be stuck. Scoped
+/// One with no members can never be satisfied, so the plan would be stuck. Scoped
 /// to the owner: another account's broken requirements are not this caller's to sweep.
 pub async fn delete_orphaned_requirements(conn: &mut DbConn, user_id: Uuid) -> AppResult<usize> {
-    let owned_levels = plan_levels::table
-        .filter(plan_levels::user_id.eq(user_id))
-        .select(plan_levels::id);
+    let owned_plans = plans::table
+        .filter(plans::user_id.eq(user_id))
+        .select(plans::id);
     Ok(diesel::delete(
         plan_requirements::table
-            .filter(plan_requirements::level_id.eq_any(owned_levels))
+            .filter(plan_requirements::plan_id.eq_any(owned_plans))
             .filter(diesel::dsl::not(diesel::dsl::exists(
                 plan_requirement_habits::table
                     .filter(plan_requirement_habits::requirement_id.eq(plan_requirements::id)),

@@ -25,13 +25,33 @@ export interface UserCheckin extends Checkin {
 	habit_id: string;
 }
 
-export interface PlanLevel {
+export type Medal = 'bronze' | 'silver' | 'gold';
+
+/** A level of a plan. The lowest one is what keeps the streak; the rest are extra. */
+export interface Tier {
+	id: string;
+	name: string | null;
+	medal: Medal | null;
+	position: number;
+	/** Retired tiers stay listed, since past periods were judged against them. */
+	retired_on: string | null;
+}
+
+export interface Plan {
 	id: string;
 	name: string;
 	period: Period;
 	position: number;
 	/** The day it was archived; null while it is in use. */
 	archived_on: string | null;
+	/** Lowest first. */
+	tiers: Tier[];
+}
+
+/** A requirement asks for `quota` at this tier; tiers without one are skipped. */
+export interface TierQuota {
+	tier_id: string;
+	quota: number;
 }
 
 export type Measure = 'amount' | 'occurrences';
@@ -39,11 +59,12 @@ export type Measure = 'amount' | 'occurrences';
 /** One member is a plain quota; several accept any mix from the set. */
 export interface Requirement {
 	id: string;
-	level_id: string;
+	plan_id: string;
 	/** Set when the joined member names are too long to read, e.g. "Cardio". */
 	name: string | null;
 	habit_ids: string[];
-	quota: number;
+	/** Rising with the tier. */
+	quotas: TierQuota[];
 	measure: Measure;
 	position: number;
 }
@@ -52,39 +73,48 @@ export interface RequirementProgress {
 	id: string;
 	name: string | null;
 	habits: Habit[];
-	quota: number;
+	quotas: TierQuota[];
 	measure: Measure;
 	done: number;
+	/** Holds its part of the lowest tier; a goal asked only higher up always does. */
 	met: boolean;
 }
 
-export interface LevelProgress extends PlanLevel {
+export interface TierStanding {
+	tier_id: string;
+	reached: boolean;
+}
+
+export interface PlanProgress extends Plan {
 	met: boolean;
 	/** Consecutive completed periods; an unfinished current one does not break it. */
 	streak: number;
+	/** The tiers asked this period, lowest first; reaching one needs every one below. */
+	standing: TierStanding[];
 	items: RequirementProgress[];
 }
 
-export interface LevelOutcome {
+export interface PlanOutcome {
 	id: string;
 	name: string;
 	archived: boolean;
 	met: boolean;
 	reached: number;
 	total: number;
+	medals: Medal[];
 }
 
 export interface PeriodOutcome {
 	period_start: string;
 	period_end: string;
-	levels: LevelOutcome[];
+	plans: PlanOutcome[];
 }
 
-export interface Plan {
+export interface PeriodProgress {
 	period: Period;
 	period_start: string;
 	period_end: string;
-	levels: LevelProgress[];
+	plans: PlanProgress[];
 }
 
 export interface NewHabit {
@@ -127,20 +157,20 @@ export interface AuthMethods {
 export interface RequirementVersion {
 	id: string;
 	name: string | null;
-	quota: number;
+	quotas: TierQuota[];
 	measure: Measure;
 	valid_from: string;
 	habits: Habit[];
 }
 
-/** A stretch of a level's life with the same requirements; `to` is exclusive, null for now. */
-export interface LevelEra {
+/** A stretch of a plan's life with the same requirements; `to` is exclusive, null for now. */
+export interface PlanEra {
 	from: string;
 	to: string | null;
 	requirements: RequirementVersion[];
 }
 
-export interface LevelVersions {
-	level: PlanLevel;
-	eras: LevelEra[];
+export interface PlanVersions {
+	plan: Plan;
+	eras: PlanEra[];
 }

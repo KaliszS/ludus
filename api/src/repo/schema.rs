@@ -147,19 +147,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    plan_levels (id) {
-        id -> Uuid,
-        user_id -> Uuid,
-        name -> Text,
-        period -> Text,
-        position -> Float8,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-        archived_on -> Nullable<Date>,
-    }
-}
-
-diesel::table! {
     plan_requirement_habits (requirement_id, habit_id) {
         requirement_id -> Uuid,
         habit_id -> Uuid,
@@ -167,11 +154,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    plan_requirement_quotas (requirement_id, tier_id) {
+        requirement_id -> Uuid,
+        tier_id -> Uuid,
+        quota -> Float8,
+    }
+}
+
+diesel::table! {
     plan_requirements (id) {
         id -> Uuid,
-        level_id -> Uuid,
+        plan_id -> Uuid,
         name -> Nullable<Text>,
-        quota -> Float8,
         measure -> Text,
         position -> Float8,
         valid_from -> Date,
@@ -180,10 +174,35 @@ diesel::table! {
 }
 
 diesel::table! {
-    plan_tasks (level_id, task_id, period_start) {
-        level_id -> Uuid,
+    plan_tasks (plan_id, task_id, period_start) {
+        plan_id -> Uuid,
         task_id -> Uuid,
         period_start -> Date,
+    }
+}
+
+diesel::table! {
+    plan_tiers (id) {
+        id -> Uuid,
+        plan_id -> Uuid,
+        name -> Nullable<Text>,
+        medal -> Nullable<Text>,
+        position -> Float8,
+        retired_on -> Nullable<Date>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    plans (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        name -> Text,
+        period -> Text,
+        position -> Float8,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+        archived_on -> Nullable<Date>,
     }
 }
 
@@ -350,12 +369,15 @@ diesel::joinable!(milestone_members -> milestones (milestone_id));
 diesel::joinable!(milestone_members -> users (user_id));
 diesel::joinable!(milestones -> projects (project_id));
 diesel::joinable!(oauth_states -> users (user_id));
-diesel::joinable!(plan_levels -> users (user_id));
 diesel::joinable!(plan_requirement_habits -> habits (habit_id));
 diesel::joinable!(plan_requirement_habits -> plan_requirements (requirement_id));
-diesel::joinable!(plan_requirements -> plan_levels (level_id));
-diesel::joinable!(plan_tasks -> plan_levels (level_id));
+diesel::joinable!(plan_requirement_quotas -> plan_requirements (requirement_id));
+diesel::joinable!(plan_requirement_quotas -> plan_tiers (tier_id));
+diesel::joinable!(plan_requirements -> plans (plan_id));
+diesel::joinable!(plan_tasks -> plans (plan_id));
 diesel::joinable!(plan_tasks -> tasks (task_id));
+diesel::joinable!(plan_tiers -> plans (plan_id));
+diesel::joinable!(plans -> users (user_id));
 diesel::joinable!(project_members -> projects (project_id));
 diesel::joinable!(project_members -> users (user_id));
 diesel::joinable!(projects -> teams (team_id));
@@ -388,10 +410,12 @@ diesel::allow_tables_to_appear_in_same_query!(
     milestone_members,
     milestones,
     oauth_states,
-    plan_levels,
     plan_requirement_habits,
+    plan_requirement_quotas,
     plan_requirements,
     plan_tasks,
+    plan_tiers,
+    plans,
     project_members,
     projects,
     sessions,
