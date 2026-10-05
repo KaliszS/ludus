@@ -1,5 +1,7 @@
 import { BASE, body, collection, request } from './http';
 import type {
+	Account,
+	AuthMethods,
 	Checkin,
 	Measure,
 	Habit,
@@ -11,7 +13,6 @@ import type {
 	PeriodOutcome,
 	Requirement,
 	SessionGrant,
-	User,
 	UserCheckin
 } from './types';
 
@@ -91,6 +92,23 @@ export const authApi = {
 			method: 'POST',
 			body: body({ code, code_verifier: verifier })
 		}),
-	me: () => request<User>('/me'),
+	methods: () => request<AuthMethods>('/auth/methods'),
+	passwordLogin: (email: string, password: string) =>
+		request<SessionGrant>('/auth/password/login', {
+			method: 'POST',
+			body: body({ email, password })
+		}),
+	/** A pending account gets no session: it waits for an administrator. */
+	register: (email: string, password: string, displayName: string) =>
+		request<SessionGrant | { pending: true }>('/auth/password/register', {
+			method: 'POST',
+			body: body({ email, password, display_name: displayName || null })
+		}),
+	changePassword: (current: string | null, next: string) =>
+		request<SessionGrant>('/me/password', {
+			method: 'PUT',
+			body: body({ current_password: current, new_password: next })
+		}),
+	me: () => request<Account>('/me'),
 	logout: () => request<void>('/auth/logout', { method: 'POST' })
 };

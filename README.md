@@ -38,15 +38,23 @@ Then open <http://localhost:7531>.
 Database contents survive `docker compose down`; only `just db-reset` discards
 them.
 
-Signing in needs a Google OAuth client of type "Web application" with this
-redirect URI, its ID and secret in `.env` as `LUDUS_GOOGLE_CLIENT_*`:
+Accounts sign in with an email and a password out of the box. Google is
+optional: create an OAuth client of type "Web application" with this redirect
+URI and put its ID and secret in `.env` as `LUDUS_GOOGLE_CLIENT_*`:
 
 ```
 http://localhost:7530/v1/auth/google/callback
 ```
 
-`LUDUS_REGISTRATION` decides what happens to someone signing in for the first
-time: `open` creates the account, `approval` creates it pending until an admin
-sets `users.status` to `active`, `closed` turns them away.
+`LUDUS_REGISTRATION` decides what happens to someone new: `open` creates the
+account, `approval` creates it pending, `closed` turns them away. There is no
+email, so accounts are administered from the server:
+
+```sh
+just api-user list
+just api-user add <email> [name]   # prints a generated password
+just api-user password <user>      # issues a new one, ends every session
+just api-user activate <user>      # approves a pending account
+```
 
 Run `just` for the full list of recipes.

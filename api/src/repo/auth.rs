@@ -7,7 +7,9 @@ use uuid::Uuid;
 use super::pool::DbConn;
 use super::schema::{oauth_states, sessions, user_identities, users};
 use crate::domain::{User, UserStatus};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
+
+pub const PASSWORD: &str = "password";
 
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = users, check_for_backend(diesel::pg::Pg))]
@@ -49,6 +51,7 @@ pub struct NewIdentity {
     pub provider: String,
     pub provider_id: String,
     pub email: String,
+    pub password_hash: Option<String>,
 }
 
 pub async fn user(conn: &mut DbConn, id: Uuid) -> AppResult<User> {
@@ -95,8 +98,135 @@ pub async fn create_user(
                 .await?;
             Ok::<_, diesel::result::Error>(row)
         })
-        .await?;
+        .await
+        .map_err(email_taken)?;
     Ok(row.into())
+}
+
+/// The unique index is the real guard: two sign-ups racing for one address both
+/// pass any earlier check, and only one of them can win the insert.
+fn email_taken(err: diesel::result::Error) -> AppError {
+    match err {
+        diesel::result::Error::DatabaseError(
+            diesel::result::DatabaseErrorKind::UniqueViolation,
+            _,
+        ) => AppError::Conflict {
+            field: "email",
+            message: "is already registered",
+        },
+        other => other.into(),
+    }
+}
+
+/// The account behind a password login, with the hash to check against.
+pub async fn password_login(conn: &mut DbConn, email: &str) -> AppResult<Option<(User, String)>> {
+    let row: Option<(UserRow, Option<String>)> = user_identities::table
+        .inner_join(users::table)
+        .filter(user_identities::provider.eq(PASSWORD))
+        .filter(user_identities::provider_id.eq(email))
+        .select((UserRow::as_select(), user_identities::password_hash))
+        .first(conn)
+        .await
+        .optional()?;
+    Ok(row.and_then(|(user, hash)| hash.map(|hash| (user.into(), hash))))
+}
+
+pub async fn password_taken(conn: &mut DbConn, email: &str) -> AppResult<bool> {
+    Ok(diesel::select(diesel::dsl::exists(
+        user_identities::table
+            .filter(user_identities::provider.eq(PASSWORD))
+            .filter(user_identities::provider_id.eq(email)),
+    ))
+    .get_result(conn)
+    .await?)
+}
+
+pub async fn password_of(conn: &mut DbConn, user_id: Uuid) -> AppResult<Option<String>> {
+    Ok(user_identities::table
+        .filter(user_identities::user_id.eq(user_id))
+        .filter(user_identities::provider.eq(PASSWORD))
+        .select(user_identities::password_hash)
+        .first::<Option<String>>(conn)
+        .await
+        .optional()?
+        .flatten())
+}
+
+/// Replaces the account's password, or gives it one if it signed in some other way
+/// until now. That second case claims `email` as a password login.
+pub async fn set_password(
+    conn: &mut DbConn,
+    user_id: Uuid,
+    email: &str,
+    hash: &str,
+) -> AppResult<()> {
+    let updated = diesel::update(
+        user_identities::table
+            .filter(user_identities::user_id.eq(user_id))
+            .filter(user_identities::provider.eq(PASSWORD)),
+    )
+    .set(user_identities::password_hash.eq(hash))
+    .execute(conn)
+    .await?;
+    if updated == 0 {
+        diesel::insert_into(user_identities::table)
+            .values(NewIdentity {
+                id: Uuid::new_v4(),
+                user_id,
+                provider: PASSWORD.to_owned(),
+                provider_id: email.to_owned(),
+                email: email.to_owned(),
+                password_hash: Some(hash.to_owned()),
+            })
+            .execute(conn)
+            .await
+            .map_err(email_taken)?;
+    }
+    Ok(())
+}
+
+/// How this account can sign in: provider names, `password` among them.
+pub async fn logins(conn: &mut DbConn, user_id: Uuid) -> AppResult<Vec<String>> {
+    Ok(user_identities::table
+        .filter(user_identities::user_id.eq(user_id))
+        .select(user_identities::provider)
+        .order(user_identities::provider)
+        .load(conn)
+        .await?)
+}
+
+pub async fn users(conn: &mut DbConn) -> AppResult<Vec<User>> {
+    let rows = users::table
+        .order(users::created_at)
+        .select(UserRow::as_select())
+        .load(conn)
+        .await?;
+    Ok(rows.into_iter().map(User::from).collect())
+}
+
+pub async fn users_by_email(conn: &mut DbConn, email: &str) -> AppResult<Vec<User>> {
+    let rows = users::table
+        .filter(users::email.eq(email))
+        .select(UserRow::as_select())
+        .load(conn)
+        .await?;
+    Ok(rows.into_iter().map(User::from).collect())
+}
+
+pub async fn set_status(conn: &mut DbConn, user_id: Uuid, status: UserStatus) -> AppResult<()> {
+    diesel::update(users::table.find(user_id))
+        .set(users::status.eq(status.as_str()))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// After a password change every existing session ends, including on stolen devices.
+pub async fn delete_sessions(conn: &mut DbConn, user_id: Uuid) -> AppResult<()> {
+    diesel::delete(sessions::table.filter(sessions::user_id.eq(user_id)))
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 #[derive(Insertable)]

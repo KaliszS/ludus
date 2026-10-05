@@ -7,10 +7,11 @@ use uuid::Uuid;
 
 use super::{Service, UserService};
 use crate::config::{OAuthClient, Registration};
-use crate::domain::{Provider, User, UserStatus};
+use crate::domain::{OAuthProvider, User, UserStatus};
 use crate::error::{AppError, AppResult};
 use crate::oauth;
 use crate::repo::auth::{self as repo, NewIdentity, NewSession, NewState, NewUser};
+use crate::repo::pool::DbConn;
 
 /// How long a user has to finish signing in at the provider.
 const STATE_TTL: Duration = Duration::minutes(10);
@@ -41,6 +42,21 @@ impl SignInError {
     }
 }
 
+impl From<SignInError> for AppError {
+    fn from(reason: SignInError) -> Self {
+        let message = match reason {
+            SignInError::Cancelled => "sign-in was cancelled",
+            SignInError::RegistrationClosed => "this instance is not accepting new accounts",
+            SignInError::PendingApproval => "this account is waiting for approval",
+            SignInError::Failed => "sign-in failed",
+        };
+        AppError::Refused {
+            code: reason.as_str(),
+            message,
+        }
+    }
+}
+
 pub struct Session {
     pub token: String,
     pub expires_at: DateTime<Utc>,
@@ -51,7 +67,7 @@ impl Service {
     /// First leg: remember what the client asked for, send the browser to the provider.
     pub async fn begin_sign_in(
         &self,
-        provider: Provider,
+        provider: OAuthProvider,
         redirect_uri: String,
         client_challenge: String,
     ) -> AppResult<Url> {
@@ -99,7 +115,7 @@ impl Service {
     /// client it came from - with a code, or with the reason there is none.
     pub async fn finish_sign_in(
         &self,
-        provider: Provider,
+        provider: OAuthProvider,
         state: &str,
         code: Option<&str>,
     ) -> AppResult<Url> {
@@ -168,27 +184,8 @@ impl Service {
         if challenge.as_deref() != Some(challenge_of(verifier).as_str()) {
             return Err(rejected());
         }
-
-        let token = random_token();
-        let expires_at = Utc::now() + SESSION_TTL;
-        repo::insert_session(
-            &mut conn,
-            NewSession {
-                id: Uuid::new_v4(),
-                user_id,
-                token_hash: hash(&token),
-                client: "web".to_owned(),
-                user_agent,
-                expires_at,
-            },
-        )
-        .await?;
-
-        Ok(Session {
-            token,
-            expires_at,
-            user: repo::user(&mut conn, user_id).await?,
-        })
+        let user = repo::user(&mut conn, user_id).await?;
+        open_session(&mut conn, user, user_agent).await
     }
 
     pub async fn authenticate(&self, token: &str) -> AppResult<UserService> {
@@ -210,14 +207,14 @@ impl Service {
         repo::delete_session(&mut conn, &hash(token)).await
     }
 
-    fn client(&self, provider: Provider) -> AppResult<&OAuthClient> {
+    fn client(&self, provider: OAuthProvider) -> AppResult<&OAuthClient> {
         match provider {
-            Provider::Google => self.auth.google.as_ref(),
+            OAuthProvider::Google => self.auth.google.as_ref(),
         }
         .ok_or(AppError::NotFound)
     }
 
-    fn callback_uri(&self, provider: Provider) -> String {
+    fn callback_uri(&self, provider: OAuthProvider) -> String {
         format!(
             "{}/v1/auth/{}/callback",
             self.auth.public_url,
@@ -229,8 +226,8 @@ impl Service {
     /// second provider vouching for the same address is not proof of the same person.
     async fn admit(
         &self,
-        conn: &mut crate::repo::pool::DbConn,
-        provider: Provider,
+        conn: &mut DbConn,
+        provider: OAuthProvider,
         profile: oauth::Profile,
     ) -> AppResult<Result<User, SignInError>> {
         let user = match repo::user_by_identity(conn, provider.as_str(), &profile.subject).await? {
@@ -257,6 +254,7 @@ impl Service {
                         provider: provider.as_str().to_owned(),
                         provider_id: profile.subject,
                         email: profile.email,
+                        password_hash: None,
                     },
                 )
                 .await?
@@ -270,15 +268,35 @@ impl Service {
     }
 }
 
-impl UserService {
-    pub async fn me(&self) -> AppResult<User> {
-        let mut conn = self.conn().await?;
-        repo::user(&mut conn, self.user_id).await
-    }
+/// Every way in ends here, so a session looks the same whichever door was used.
+pub(super) async fn open_session(
+    conn: &mut DbConn,
+    user: User,
+    user_agent: Option<String>,
+) -> AppResult<Session> {
+    let token = random_token();
+    let expires_at = Utc::now() + SESSION_TTL;
+    repo::insert_session(
+        conn,
+        NewSession {
+            id: Uuid::new_v4(),
+            user_id: user.id,
+            token_hash: hash(&token),
+            client: "web".to_owned(),
+            user_agent,
+            expires_at,
+        },
+    )
+    .await?;
+    Ok(Session {
+        token,
+        expires_at,
+        user,
+    })
 }
 
 /// 32 bytes from the OS generator: 256 bits, past any guessing.
-fn random_token() -> String {
+pub(super) fn random_token() -> String {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).expect("the OS random generator is available");
     URL_SAFE_NO_PAD.encode(bytes)

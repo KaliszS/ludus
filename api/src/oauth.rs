@@ -6,7 +6,7 @@ use reqwest::Url;
 use serde::Deserialize;
 
 use crate::config::OAuthClient;
-use crate::domain::Provider;
+use crate::domain::OAuthProvider;
 
 const GOOGLE_AUTHORIZE: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN: &str = "https://oauth2.googleapis.com/token";
@@ -22,14 +22,14 @@ pub struct Profile {
 }
 
 pub fn authorize_url(
-    provider: Provider,
+    provider: OAuthProvider,
     client: &OAuthClient,
     redirect_uri: &str,
     state: &str,
     challenge: &str,
 ) -> Url {
     match provider {
-        Provider::Google => Url::parse_with_params(
+        OAuthProvider::Google => Url::parse_with_params(
             GOOGLE_AUTHORIZE,
             [
                 ("client_id", client.id.as_str()),
@@ -48,14 +48,14 @@ pub fn authorize_url(
 
 pub async fn exchange(
     http: &reqwest::Client,
-    provider: Provider,
+    provider: OAuthProvider,
     client: &OAuthClient,
     redirect_uri: &str,
     code: &str,
     verifier: &str,
 ) -> anyhow::Result<Profile> {
     match provider {
-        Provider::Google => google(http, client, redirect_uri, code, verifier).await,
+        OAuthProvider::Google => google(http, client, redirect_uri, code, verifier).await,
     }
 }
 

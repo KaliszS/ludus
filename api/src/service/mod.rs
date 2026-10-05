@@ -1,6 +1,8 @@
+pub mod admin;
 pub mod auth;
 pub mod checkin;
 pub mod habit;
+pub mod password;
 pub mod plan;
 
 use std::sync::Arc;
@@ -10,6 +12,7 @@ use uuid::Uuid;
 use crate::config::AuthConfig;
 use crate::domain::{Period, Tracking};
 use crate::error::{AppError, AppResult};
+use crate::password::{Attempts, Hasher};
 use crate::repo::pool::{DbConn, DbPool};
 
 /// Everything that does not need to know who is asking: signing in, mostly.
@@ -18,6 +21,8 @@ pub struct Service {
     pool: DbPool,
     auth: Arc<AuthConfig>,
     http: reqwest::Client,
+    passwords: Arc<Hasher>,
+    attempts: Arc<Attempts>,
 }
 
 /// The service acting for one signed-in user. Only the auth extractor builds one,
@@ -29,12 +34,14 @@ pub struct UserService {
 }
 
 impl Service {
-    pub fn new(pool: DbPool, auth: AuthConfig) -> Self {
-        Self {
+    pub fn new(pool: DbPool, auth: AuthConfig) -> anyhow::Result<Self> {
+        Ok(Self {
             pool,
             auth: Arc::new(auth),
             http: reqwest::Client::new(),
-        }
+            passwords: Arc::new(Hasher::new()?),
+            attempts: Arc::default(),
+        })
     }
 
     fn for_user(&self, user_id: Uuid) -> UserService {

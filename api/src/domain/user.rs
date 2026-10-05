@@ -1,11 +1,11 @@
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Provider {
+pub enum OAuthProvider {
     Google,
 }
 
-impl Provider {
+impl OAuthProvider {
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "google" => Some(Self::Google),

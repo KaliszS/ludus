@@ -9,4 +9,4 @@ pub use plan::{
     LevelOutcome, LevelProgress, Measure, Period, PeriodOutcome, PlanLevel, PlanProgress,
     Requirement, RequirementProgress,
 };
-pub use user::{Provider, User, UserStatus};
+pub use user::{OAuthProvider, User, UserStatus};

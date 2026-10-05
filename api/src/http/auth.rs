@@ -1,14 +1,16 @@
 use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, StatusCode, header};
-use axum::response::Redirect;
+use axum::response::{IntoResponse, Redirect, Response};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::extract::{Json, Path, Query};
-use crate::domain::{Provider, User};
+use crate::domain::{OAuthProvider, User};
 use crate::error::{AppError, AppResult};
+use crate::service::auth::Session;
+use crate::service::password::Registered;
 use crate::service::{Service, UserService};
 
 /// Taking a `UserService` in a handler is what makes the route require sign-in.
@@ -31,8 +33,8 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
         .filter(|token| !token.is_empty())
 }
 
-fn provider(name: &str) -> AppResult<Provider> {
-    Provider::parse(name).ok_or(AppError::NotFound)
+fn provider(name: &str) -> AppResult<OAuthProvider> {
+    OAuthProvider::parse(name).ok_or(AppError::NotFound)
 }
 
 #[derive(Serialize)]
@@ -103,23 +105,126 @@ pub struct SessionResponse {
     user: UserResponse,
 }
 
+impl From<Session> for SessionResponse {
+    fn from(session: Session) -> Self {
+        Self {
+            token: session.token,
+            expires_at: session.expires_at,
+            user: session.user.into(),
+        }
+    }
+}
+
+fn user_agent(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned)
+}
+
 pub async fn token(
     State(service): State<Service>,
     headers: HeaderMap,
     Json(body): Json<TokenBody>,
 ) -> AppResult<Json<SessionResponse>> {
-    let user_agent = headers
-        .get(header::USER_AGENT)
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_owned);
     let session = service
-        .redeem(&body.code, &body.code_verifier, user_agent)
+        .redeem(&body.code, &body.code_verifier, user_agent(&headers))
         .await?;
-    Ok(Json(SessionResponse {
-        token: session.token,
-        expires_at: session.expires_at,
-        user: session.user.into(),
-    }))
+    Ok(Json(session.into()))
+}
+
+#[derive(Serialize)]
+pub struct MethodsResponse {
+    providers: Vec<&'static str>,
+    registration: &'static str,
+}
+
+pub async fn methods(State(service): State<Service>) -> Json<MethodsResponse> {
+    let methods = service.methods();
+    Json(MethodsResponse {
+        providers: methods
+            .providers
+            .into_iter()
+            .map(OAuthProvider::as_str)
+            .collect(),
+        registration: methods.registration.as_str(),
+    })
+}
+
+#[derive(Deserialize)]
+pub struct PasswordSignIn {
+    email: String,
+    password: String,
+}
+
+pub async fn password_login(
+    State(service): State<Service>,
+    headers: HeaderMap,
+    Json(body): Json<PasswordSignIn>,
+) -> AppResult<Json<SessionResponse>> {
+    let session = service
+        .password_sign_in(&body.email, body.password, user_agent(&headers))
+        .await?;
+    Ok(Json(session.into()))
+}
+
+#[derive(Deserialize)]
+pub struct RegisterBody {
+    email: String,
+    password: String,
+    display_name: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PendingResponse {
+    pending: bool,
+}
+
+/// 201 with a session when the account is live at once, 202 when it waits for approval.
+pub async fn register(
+    State(service): State<Service>,
+    headers: HeaderMap,
+    Json(body): Json<RegisterBody>,
+) -> AppResult<Response> {
+    let registered = service
+        .register(
+            &body.email,
+            body.password,
+            body.display_name,
+            user_agent(&headers),
+        )
+        .await?;
+    Ok(match registered {
+        Registered::SignedIn(session) => {
+            (StatusCode::CREATED, Json(SessionResponse::from(session))).into_response()
+        }
+        Registered::Pending => (
+            StatusCode::ACCEPTED,
+            Json(PendingResponse { pending: true }),
+        )
+            .into_response(),
+    })
+}
+
+#[derive(Deserialize)]
+pub struct PasswordChange {
+    current_password: Option<String>,
+    new_password: String,
+}
+
+pub async fn change_password(
+    service: UserService,
+    headers: HeaderMap,
+    Json(body): Json<PasswordChange>,
+) -> AppResult<Json<SessionResponse>> {
+    let session = service
+        .change_password(
+            body.current_password,
+            body.new_password,
+            user_agent(&headers),
+        )
+        .await?;
+    Ok(Json(session.into()))
 }
 
 /// Succeeds even without a valid session: the client wants to be signed out,
@@ -131,6 +236,18 @@ pub async fn logout(State(service): State<Service>, headers: HeaderMap) -> AppRe
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn me(service: UserService) -> AppResult<Json<UserResponse>> {
-    Ok(Json(service.me().await?.into()))
+#[derive(Serialize)]
+pub struct AccountResponse {
+    #[serde(flatten)]
+    user: UserResponse,
+    /// How this account can sign in, e.g. `["google", "password"]`.
+    logins: Vec<String>,
+}
+
+pub async fn me(service: UserService) -> AppResult<Json<AccountResponse>> {
+    let account = service.account().await?;
+    Ok(Json(AccountResponse {
+        user: account.user.into(),
+        logins: account.logins,
+    }))
 }

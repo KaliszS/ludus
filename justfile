@@ -74,6 +74,10 @@ api-rollback n="1": && api-schema
 api-redo n="1": && api-schema
     cd api && diesel migration redo -n {{ n }}
 
+# Account administration: just api-user list | add <email> [name] | password <user> | activate <user>
+api-user *args:
+    cd api && cargo run -q -- user {{ args }}
+
 # Which migrations are applied and which are pending
 api-migrations:
     cd api && diesel migration list

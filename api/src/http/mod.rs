@@ -48,9 +48,13 @@ fn api() -> Router<Service> {
     Router::new()
         .route("/auth/{provider}/start", get(auth::start))
         .route("/auth/{provider}/callback", get(auth::callback))
+        .route("/auth/methods", get(auth::methods))
         .route("/auth/token", post(auth::token))
+        .route("/auth/password/login", post(auth::password_login))
+        .route("/auth/password/register", post(auth::register))
         .route("/auth/logout", post(auth::logout))
         .route("/me", get(auth::me))
+        .route("/me/password", put(auth::change_password))
         .route("/habits", get(habit::list).post(habit::create))
         .route(
             "/habits/{id}",
