@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
@@ -12,6 +12,8 @@ pub enum AppError {
     },
     #[error("not found")]
     NotFound,
+    #[error("sign in required")]
+    Unauthenticated,
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -60,6 +62,7 @@ impl IntoResponse for AppError {
                 (StatusCode::BAD_REQUEST, "invalid_request", field.clone())
             }
             Self::NotFound => (StatusCode::NOT_FOUND, "not_found", None),
+            Self::Unauthenticated => (StatusCode::UNAUTHORIZED, "unauthenticated", None),
             Self::Internal(err) => {
                 tracing::error!(error = ?err, "request failed");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal", None)
@@ -78,7 +81,14 @@ impl IntoResponse for AppError {
                 field,
             },
         };
-        (status, Json(body)).into_response()
+        let mut response = (status, Json(body)).into_response();
+        if status == StatusCode::UNAUTHORIZED {
+            response.headers_mut().insert(
+                header::WWW_AUTHENTICATE,
+                "Bearer".parse().expect("static header"),
+            );
+        }
+        response
     }
 }
 

@@ -1,4 +1,3 @@
-use axum::extract::State;
 use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -8,7 +7,7 @@ use super::dto::{List, double_option};
 use super::extract::{Json, Path, Query};
 use crate::domain::Habit;
 use crate::error::AppResult;
-use crate::service::Service;
+use crate::service::UserService;
 use crate::service::habit::{CreateHabit, UpdateHabit};
 
 #[derive(Serialize)]
@@ -81,7 +80,7 @@ pub struct UpdateBody {
 }
 
 pub async fn list(
-    State(service): State<Service>,
+    service: UserService,
     Query(query): Query<ListQuery>,
 ) -> AppResult<Json<List<HabitResponse>>> {
     Ok(Json(
@@ -89,15 +88,12 @@ pub async fn list(
     ))
 }
 
-pub async fn show(
-    State(service): State<Service>,
-    Path(id): Path<Uuid>,
-) -> AppResult<Json<HabitResponse>> {
+pub async fn show(service: UserService, Path(id): Path<Uuid>) -> AppResult<Json<HabitResponse>> {
     Ok(Json(service.habit(id).await?.into()))
 }
 
 pub async fn create(
-    State(service): State<Service>,
+    service: UserService,
     Json(body): Json<CreateBody>,
 ) -> AppResult<(StatusCode, Json<HabitResponse>)> {
     let habit = service
@@ -115,7 +111,7 @@ pub async fn create(
 }
 
 pub async fn update(
-    State(service): State<Service>,
+    service: UserService,
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateBody>,
 ) -> AppResult<Json<HabitResponse>> {
@@ -138,7 +134,7 @@ pub async fn update(
     Ok(Json(habit.into()))
 }
 
-pub async fn remove(State(service): State<Service>, Path(id): Path<Uuid>) -> AppResult<StatusCode> {
+pub async fn remove(service: UserService, Path(id): Path<Uuid>) -> AppResult<StatusCode> {
     service.delete_habit(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

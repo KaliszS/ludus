@@ -1,4 +1,4 @@
-import { body, collection, request } from './http';
+import { BASE, body, collection, request } from './http';
 import type {
 	Checkin,
 	Measure,
@@ -10,6 +10,8 @@ import type {
 	PlanLevel,
 	PeriodOutcome,
 	Requirement,
+	SessionGrant,
+	User,
 	UserCheckin
 } from './types';
 
@@ -75,4 +77,20 @@ export const planApi = {
 		if (on) query.set('on', on);
 		return request<Plan>(`/plan?${query}`);
 	}
+};
+
+export const authApi = {
+	/** A page the browser navigates to, not a fetch: it ends at the provider. */
+	startUrl: (provider: string, redirectUri: string, challenge: string) =>
+		`${BASE}/auth/${provider}/start?${new URLSearchParams({
+			redirect_uri: redirectUri,
+			code_challenge: challenge
+		})}`,
+	redeem: (code: string, verifier: string) =>
+		request<SessionGrant>('/auth/token', {
+			method: 'POST',
+			body: body({ code, code_verifier: verifier })
+		}),
+	me: () => request<User>('/me'),
+	logout: () => request<void>('/auth/logout', { method: 'POST' })
 };

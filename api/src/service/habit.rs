@@ -1,7 +1,7 @@
 use chrono::Utc;
 use uuid::Uuid;
 
-use super::{Service, check_weekdays, parse_tracking, require_name};
+use super::{UserService, check_weekdays, parse_tracking, require_name};
 use crate::domain::{Habit, Tracking};
 use crate::error::AppResult;
 use crate::repo::habit::{self, HabitChanges, NewHabit};
@@ -40,15 +40,15 @@ fn to_column(days: Vec<i16>) -> Option<Vec<Option<i16>>> {
     }
 }
 
-impl Service {
+impl UserService {
     pub async fn habits(&self, include_archived: bool) -> AppResult<Vec<Habit>> {
         let mut conn = self.conn().await?;
-        habit::list(&mut conn, self.current_user(), include_archived).await
+        habit::list(&mut conn, self.user_id, include_archived).await
     }
 
     pub async fn habit(&self, id: Uuid) -> AppResult<Habit> {
         let mut conn = self.conn().await?;
-        habit::get(&mut conn, self.current_user(), id).await
+        habit::get(&mut conn, self.user_id, id).await
     }
 
     pub async fn create_habit(&self, input: CreateHabit) -> AppResult<Habit> {
@@ -60,7 +60,7 @@ impl Service {
         let weekdays = input.weekdays.unwrap_or_default();
         check_weekdays(&weekdays)?;
 
-        let user_id = self.current_user();
+        let user_id = self.user_id;
         let mut conn = self.conn().await?;
         let position = habit::next_position(&mut conn, user_id).await?;
 
@@ -111,13 +111,13 @@ impl Service {
         };
 
         let mut conn = self.conn().await?;
-        habit::update(&mut conn, self.current_user(), id, changes).await
+        habit::update(&mut conn, self.user_id, id, changes).await
     }
 
     pub async fn delete_habit(&self, id: Uuid) -> AppResult<()> {
         let mut conn = self.conn().await?;
-        habit::delete(&mut conn, self.current_user(), id).await?;
-        plan::delete_orphaned_requirements(&mut conn, self.current_user()).await?;
+        habit::delete(&mut conn, self.user_id, id).await?;
+        plan::delete_orphaned_requirements(&mut conn, self.user_id).await?;
         Ok(())
     }
 }

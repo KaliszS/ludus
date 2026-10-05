@@ -1,12 +1,12 @@
 use chrono::NaiveDate;
 use uuid::Uuid;
 
-use super::Service;
+use super::UserService;
 use crate::domain::{Checkin, Tracking};
 use crate::error::{AppError, AppResult};
 use crate::repo::{checkin, habit};
 
-impl Service {
+impl UserService {
     pub async fn checkins(
         &self,
         habit_id: Uuid,
@@ -17,7 +17,7 @@ impl Service {
             return Err(AppError::invalid("from", "must not be after to"));
         }
         let mut conn = self.conn().await?;
-        habit::get(&mut conn, self.current_user(), habit_id).await?;
+        habit::get(&mut conn, self.user_id, habit_id).await?;
         checkin::list(&mut conn, habit_id, from, to).await
     }
 
@@ -30,7 +30,7 @@ impl Service {
             return Err(AppError::invalid("from", "must not be after to"));
         }
         let mut conn = self.conn().await?;
-        checkin::range_for_user(&mut conn, self.current_user(), from, to).await
+        checkin::range_for_user(&mut conn, self.user_id, from, to).await
     }
 
     /// Idempotent per day. A binary habit ignores any amount and stores 1.
@@ -41,7 +41,7 @@ impl Service {
         times: Option<i32>,
     ) -> AppResult<Checkin> {
         let mut conn = self.conn().await?;
-        let habit = habit::get(&mut conn, self.current_user(), habit_id).await?;
+        let habit = habit::get(&mut conn, self.user_id, habit_id).await?;
 
         let times = match (habit.tracking, times) {
             (Tracking::Binary, _) => 1,
@@ -57,7 +57,7 @@ impl Service {
 
     pub async fn unset_checkin(&self, habit_id: Uuid, day: NaiveDate) -> AppResult<()> {
         let mut conn = self.conn().await?;
-        habit::get(&mut conn, self.current_user(), habit_id).await?;
+        habit::get(&mut conn, self.user_id, habit_id).await?;
         checkin::unset(&mut conn, habit_id, day).await
     }
 }

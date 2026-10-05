@@ -139,6 +139,10 @@ diesel::table! {
         device_code_hash -> Nullable<Bytea>,
         expires_at -> Timestamptz,
         created_at -> Timestamptz,
+        provider -> Text,
+        client_challenge -> Nullable<Text>,
+        user_id -> Nullable<Uuid>,
+        code_hash -> Nullable<Bytea>,
     }
 }
 
@@ -292,9 +296,19 @@ diesel::table! {
 }
 
 diesel::table! {
+    user_identities (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        provider -> Text,
+        provider_id -> Text,
+        email -> Text,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     users (id) {
         id -> Uuid,
-        google_sub -> Text,
         email -> Text,
         display_name -> Text,
         avatar_url -> Nullable<Text>,
@@ -331,6 +345,7 @@ diesel::joinable!(labels -> teams (team_id));
 diesel::joinable!(milestone_members -> milestones (milestone_id));
 diesel::joinable!(milestone_members -> users (user_id));
 diesel::joinable!(milestones -> projects (project_id));
+diesel::joinable!(oauth_states -> users (user_id));
 diesel::joinable!(plan_levels -> users (user_id));
 diesel::joinable!(plan_requirement_habits -> habits (habit_id));
 diesel::joinable!(plan_requirement_habits -> plan_requirements (requirement_id));
@@ -354,6 +369,7 @@ diesel::joinable!(tasks -> teams (team_id));
 diesel::joinable!(tasks -> workflow_states (state_id));
 diesel::joinable!(team_members -> teams (team_id));
 diesel::joinable!(team_members -> users (user_id));
+diesel::joinable!(user_identities -> users (user_id));
 diesel::joinable!(workflow_states -> teams (team_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
@@ -381,6 +397,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     tasks,
     team_members,
     teams,
+    user_identities,
     users,
     workflow_states,
 );

@@ -22,7 +22,7 @@ cargo install diesel_cli --no-default-features --features postgres
 
 ```sh
 cp .env.example .env
-just setup      # database, migrations, stand-in user, GUI dependencies
+just setup      # database, migrations, GUI dependencies
 just api-run    # daemon, first terminal
 just gui-dev    # web client, second terminal
 ```
@@ -38,7 +38,15 @@ Then open <http://localhost:7531>.
 Database contents survive `docker compose down`; only `just db-reset` discards
 them.
 
-Authentication does not exist yet - every request runs as one seeded user, which
-is why the daemon binds to loopback only.
+Signing in needs a Google OAuth client of type "Web application" with this
+redirect URI, its ID and secret in `.env` as `LUDUS_GOOGLE_CLIENT_*`:
+
+```
+http://localhost:7530/v1/auth/google/callback
+```
+
+`LUDUS_REGISTRATION` decides what happens to someone signing in for the first
+time: `open` creates the account, `approval` creates it pending until an admin
+sets `users.status` to `active`, `closed` turns them away.
 
 Run `just` for the full list of recipes.

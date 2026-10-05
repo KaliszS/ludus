@@ -1,6 +1,7 @@
 import { PUBLIC_DEFAULT_API_URL } from '$env/static/public';
+import { leave, token } from '$lib/auth/token';
 
-const BASE = `${PUBLIC_DEFAULT_API_URL || 'http://127.0.0.1:7530'}/v1`;
+export const BASE = `${PUBLIC_DEFAULT_API_URL || 'http://127.0.0.1:7530'}/v1`;
 
 export class ApiError extends Error {
 	constructor(
@@ -15,6 +16,8 @@ export class ApiError extends Error {
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 	const headers = new Headers(init.headers);
 	if (init.body) headers.set('content-type', 'application/json');
+	const session = token.get();
+	if (session) headers.set('authorization', `Bearer ${session}`);
 
 	let res: Response;
 	try {
@@ -26,6 +29,10 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
 	const text = await res.text();
 	const body = text ? JSON.parse(text) : null;
 
+	if (res.status === 401) {
+		token.clear();
+		leave();
+	}
 	if (!res.ok) {
 		const err = body?.error;
 		throw new ApiError(err?.code ?? 'internal', err?.message ?? res.statusText, err?.field);

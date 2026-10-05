@@ -24,7 +24,12 @@ CREATE TABLE public.oauth_states (
     redirect_uri text NOT NULL,
     device_code_hash bytea,
     expires_at timestamp with time zone NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    provider text NOT NULL,
+    client_challenge text,
+    user_id uuid,
+    code_hash bytea,
+    CONSTRAINT oauth_states_provider_check CHECK ((provider = ANY (ARRAY['google'::text, 'github'::text])))
 );
 
 --
@@ -44,12 +49,25 @@ CREATE TABLE public.sessions (
 );
 
 --
+-- Name: user_identities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_identities (
+    id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    provider text NOT NULL,
+    provider_id text NOT NULL,
+    email text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT user_identities_provider_check CHECK ((provider = ANY (ARRAY['google'::text, 'github'::text])))
+);
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.users (
     id uuid NOT NULL,
-    google_sub text NOT NULL,
     email text NOT NULL,
     display_name text NOT NULL,
     avatar_url text,
@@ -80,6 +98,13 @@ ALTER TABLE ONLY public.device_authorizations
     ADD CONSTRAINT device_authorizations_user_code_key UNIQUE (user_code);
 
 --
+-- Name: oauth_states oauth_states_code_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oauth_states
+    ADD CONSTRAINT oauth_states_code_hash_key UNIQUE (code_hash);
+
+--
 -- Name: oauth_states oauth_states_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -101,11 +126,18 @@ ALTER TABLE ONLY public.sessions
     ADD CONSTRAINT sessions_token_hash_key UNIQUE (token_hash);
 
 --
--- Name: users users_google_sub_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: user_identities user_identities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_google_sub_key UNIQUE (google_sub);
+ALTER TABLE ONLY public.user_identities
+    ADD CONSTRAINT user_identities_pkey PRIMARY KEY (id);
+
+--
+-- Name: user_identities user_identities_provider_provider_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_identities
+    ADD CONSTRAINT user_identities_provider_provider_id_key UNIQUE (provider, provider_id);
 
 --
 -- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -133,6 +165,12 @@ CREATE INDEX idx_device_authorizations_user ON public.device_authorizations USIN
 CREATE INDEX idx_oauth_states_expires ON public.oauth_states USING btree (expires_at);
 
 --
+-- Name: idx_oauth_states_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_oauth_states_user ON public.oauth_states USING btree (user_id);
+
+--
 -- Name: idx_sessions_expires; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -151,6 +189,12 @@ CREATE INDEX idx_sessions_prev_hash ON public.sessions USING btree (prev_hash) W
 CREATE INDEX idx_sessions_user ON public.sessions USING btree (user_id);
 
 --
+-- Name: idx_user_identities_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_user_identities_user ON public.user_identities USING btree (user_id);
+
+--
 -- Name: users set_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -164,8 +208,22 @@ ALTER TABLE ONLY public.device_authorizations
     ADD CONSTRAINT device_authorizations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 --
+-- Name: oauth_states oauth_states_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.oauth_states
+    ADD CONSTRAINT oauth_states_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+--
 -- Name: sessions sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sessions
     ADD CONSTRAINT sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+--
+-- Name: user_identities user_identities_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_identities
+    ADD CONSTRAINT user_identities_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;

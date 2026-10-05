@@ -20,6 +20,8 @@ class Toast {
 		try {
 			return await action();
 		} catch (error) {
+			// The request layer is already sending the browser to sign in.
+			if (error instanceof ApiError && error.code === 'unauthenticated') return undefined;
 			this.show(error instanceof ApiError ? error.message : String(error));
 			return undefined;
 		}
