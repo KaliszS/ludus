@@ -3,6 +3,7 @@
 	import { levelsApi } from '$lib/api/endpoints';
 	import type { LevelEra, LevelVersions, RequirementVersion } from '$lib/api/types';
 	import { formatRange, monthDay } from '$lib/domain/date';
+	import { quotaUnit } from '$lib/domain/plan';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { toast } from '$lib/state/toast.svelte';
 
@@ -24,11 +25,8 @@
 	const isNew = (era: LevelEra, version: RequirementVersion, index: number) =>
 		index < (eras?.length ?? 0) - 1 && version.valid_from === era.from;
 
-	function target(version: RequirementVersion): string {
-		if (version.measure === 'occurrences') return `${version.quota} days`;
-		const unit = version.habits.length === 1 ? version.habits[0].unit : null;
-		return `${version.quota} ${unit ?? 'total'}`;
-	}
+	const target = (version: RequirementVersion) =>
+		`${version.quota} ${quotaUnit(version.measure, version.quota, version.habits) ?? 'total'}`;
 </script>
 
 {#if archivedOn}
