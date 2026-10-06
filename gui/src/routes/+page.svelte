@@ -1,6 +1,6 @@
 <script lang="ts">
 	import DayPicker from '$lib/features/board/DayPicker.svelte';
-	import HabitRow from '$lib/features/board/HabitRow.svelte';
+	import HabitChip from '$lib/features/board/HabitChip.svelte';
 	import PeriodCard from '$lib/features/board/PeriodCard.svelte';
 	import { fullLabel, today } from '$lib/domain/date';
 	import { board } from '$lib/state/board.svelte';
@@ -43,9 +43,9 @@
 						</h2>
 
 						{#if board.active.length}
-							<ul class="mt-1 divide-y divide-line">
+							<ul class="mt-3 flex flex-wrap gap-1.5">
 								{#each board.active as habit (habit.id)}
-									<HabitRow {habit} />
+									<HabitChip {habit} />
 								{/each}
 							</ul>
 						{:else if board.loading}
