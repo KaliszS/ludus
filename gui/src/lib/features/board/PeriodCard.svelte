@@ -71,8 +71,9 @@
      tick says "done", not which habit did it. Ticked ones fill in with a small
      overshoot, one after another. Past five they drop a size and split into two even
      rows - left to wrap, ten would break 7 + 3 on a phone and 5 + 5 on a desktop.
-     A tick that completes a medal tier wears that metal as a ring while the tier is
-     still ahead, and lets it go once ticked: the rings show only what is left to win. -->
+     A tick that completes a medal tier has a dot of that metal beneath it while the
+     tier is still ahead - the ticks' version of the bar's notch - and lets it go once
+     ticked: the dots show only what is left to win, without ringing every tick. -->
 {#snippet checks(plan: PlanProgress, item: RequirementProgress)}
 	{@const color = 'var(--color-good)'}
 	{@const count = top(item)}
@@ -84,27 +85,34 @@
 		<span class="grid gap-[5px]" style:grid-template-columns="repeat({columns}, {size}px)">
 			{#each Array.from({ length: count }, (_, index) => index) as index (index)}
 				{@const ticked = index < item.done}
-				{@const milestone = ticked ? undefined : marks.find((mark) => mark.at === index + 1)}
-				<span
-					class="grid shrink-0 place-items-center rounded-full
-				       transition-[transform,background-color,box-shadow,color] duration-500
-				       ease-[cubic-bezier(0.34,1.56,0.64,1)]"
-					style:width="{size}px"
-					style:height="{size}px"
-					style:transition-delay="{Math.min(index, 9) * 45}ms"
-					style:transform={ticked ? 'scale(1)' : 'scale(0.86)'}
-					style:background-color={ticked ? color : faint}
-					style:color={ticked
-						? 'var(--color-surface)'
-						: `color-mix(in oklab, ${color} 45%, transparent)`}
-					style:box-shadow={[
-						milestone && `0 0 0 1.5px var(--color-surface), 0 0 0 3px ${milestone.color}`,
-						ticked && `0 1px 6px color-mix(in oklab, ${color} 40%, transparent)`
-					]
-						.filter(Boolean)
-						.join(', ') || 'none'}
-				>
-					<Check size={Math.round(size * 0.58)} strokeWidth={3.25} />
+				{@const milestone = marks.find((mark) => mark.at === index + 1)}
+				<span class="flex flex-col items-center gap-[3px]">
+					<span
+						class="grid shrink-0 place-items-center rounded-full
+					       transition-[transform,background-color,box-shadow,color] duration-500
+					       ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+						style:width="{size}px"
+						style:height="{size}px"
+						style:transition-delay="{Math.min(index, 9) * 45}ms"
+						style:transform={ticked ? 'scale(1)' : 'scale(0.86)'}
+						style:background-color={ticked ? color : faint}
+						style:color={ticked
+							? 'var(--color-surface)'
+							: `color-mix(in oklab, ${color} 45%, transparent)`}
+						style:box-shadow={ticked
+							? `0 1px 6px color-mix(in oklab, ${color} 40%, transparent)`
+							: 'none'}
+					>
+						<Check size={Math.round(size * 0.58)} strokeWidth={3.25} />
+					</span>
+					<!-- Every tick keeps the slot once any has a dot, so the row stays level. -->
+					{#if marks.length}
+						<span
+							class="size-[5px] rounded-full transition-opacity duration-500"
+							style:background-color={milestone?.color ?? 'transparent'}
+							style:opacity={milestone && !ticked ? 1 : 0}
+						></span>
+					{/if}
 				</span>
 			{/each}
 		</span>

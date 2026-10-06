@@ -24,6 +24,12 @@ export function tierLabel(tier: Tier, index: number): string {
 	return `Tier ${index + 1}`;
 }
 
+/** What a tier without its own quota still asks: the nearest quota below it, since a
+ *  tier counts only once every tier under it is reached. */
+export function carriedQuota(own: (number | undefined)[], index: number): number | undefined {
+	return own.slice(0, index).findLast((quota) => quota !== undefined);
+}
+
 /** The first quota still ahead, or the top one once every one is reached. */
 export function nextQuota(quotas: TierQuota[], done: number): number {
 	return (quotas.find((quota) => done < quota.quota) ?? quotas.at(-1))?.quota ?? 0;

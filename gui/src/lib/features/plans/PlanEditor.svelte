@@ -8,7 +8,7 @@
 	import Segmented from '$lib/ui/Segmented.svelte';
 	import TierMark from './TierMark.svelte';
 	import { tint } from '$lib/domain/palette';
-	import { MEDALS, liveTiers, tierLabel } from '$lib/domain/plan';
+	import { MEDALS, carriedQuota, liveTiers, tierLabel } from '$lib/domain/plan';
 	import { habits } from '$lib/state/habits.svelte';
 	import { plans } from '$lib/state/plans.svelte';
 	import type { Measure, Medal, Period, Plan, Requirement, Tier } from '$lib/api/types';
@@ -80,13 +80,36 @@
 	const quotaAt = (requirement: Requirement, tier: Tier) =>
 		requirement.quotas.find((quota) => quota.tier_id === tier.id)?.quota;
 
+	const draftQuotas = $derived(
+		tiers.map((tier, index) => Number(draftFor(tier, index)) || undefined)
+	);
+
 	/** Name, one narrow column per tier, then the row's action - shared by the header,
 	 *  every requirement and the add form, so quotas line up under their tier. */
 	const columns = $derived(`minmax(0, 1fr) repeat(${tiers.length}, var(--cell)) 1.75rem`);
 
 	const cell =
-		'h-8 w-full min-w-0 rounded-lg bg-sunken text-center text-sm tabular-nums outline-none ' +
-		'transition placeholder:text-muted/50 hover:ring-1 hover:ring-line focus:ring-2 focus:ring-accent';
+		'h-8 w-full min-w-0 rounded-lg text-center text-sm tabular-nums outline-none transition ' +
+		'hover:ring-1 hover:ring-line focus:ring-2 focus:ring-accent';
+
+	/** A tier's own quota sits in a filled field. Without one, the tier either still holds
+	 *  the quota below it, shown faded, or does not ask for this goal at all. */
+	function quotaCell(own: (number | undefined)[], index: number, fill: string) {
+		const carried = carriedQuota(own, index);
+		if (own[index] !== undefined) return { carried, style: `${cell} ${fill}` };
+		if (carried !== undefined) {
+			return {
+				carried,
+				style: `${cell} bg-transparent placeholder:text-muted`,
+				title: `Still ${carried} from the tier below; type a higher number to raise it`
+			};
+		}
+		return {
+			carried,
+			style: `${cell} border border-dashed border-line/70 bg-transparent`,
+			title: 'Not asked at this tier'
+		};
+	}
 
 	/** Archived members are not offered as chips, so carry them over untouched
 	 *  instead of dropping them the moment someone edits the visible ones. */
@@ -180,6 +203,7 @@
 					.map((id) => byId.get(id))
 					.filter((habit) => habit !== undefined)}
 				{@const lead = members[0]}
+				{@const own = tiers.map((tier) => quotaAt(requirement, tier))}
 				<!-- All members archived: the requirement is dormant, not worth a blank row. -->
 				{#if members.length}
 					<li class="py-1.5">
@@ -232,18 +256,19 @@
 								{/if}
 							</div>
 
-							<!-- An empty field skips that tier for this goal. -->
 							{#key refused[requirement.id]}
 								{#each tiers as tier, index (tier.id)}
+									{@const look = quotaCell(own, index, 'bg-sunken')}
 									<input
 										type="number"
 										min="1"
 										step="any"
-										placeholder="–"
+										placeholder={look.carried === undefined ? '' : String(look.carried)}
 										aria-label="{tierLabel(tier, index)} quota"
-										value={String(quotaAt(requirement, tier) ?? '')}
+										title={look.title}
+										value={String(own[index] ?? '')}
 										onchange={(event) => setQuota(requirement, tier, event.currentTarget.value)}
-										class={cell}
+										class={look.style}
 									/>
 								{/each}
 							{/key}
@@ -327,15 +352,17 @@
 						<span class="text-[11px] text-muted">Quota per {plan.period}</span>
 					{/if}
 					{#each tiers as tier, index (tier.id)}
+						{@const look = quotaCell(draftQuotas, index, 'bg-surface')}
 						<input
 							type="number"
 							min="1"
 							step="any"
-							placeholder="–"
+							placeholder={look.carried === undefined ? '' : String(look.carried)}
 							aria-label="{tierLabel(tier, index)} quota"
+							title={look.title}
 							value={draftFor(tier, index)}
 							onchange={(event) => (drafts[tier.id] = event.currentTarget.value)}
-							class="{cell} bg-surface"
+							class={look.style}
 						/>
 					{/each}
 				</div>
