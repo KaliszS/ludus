@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import TextField from '$lib/ui/TextField.svelte';
@@ -10,7 +11,14 @@
 	import ColorPicker from './ColorPicker.svelte';
 	import IconPicker from './IconPicker.svelte';
 
-	let { onclose }: { onclose: () => void } = $props();
+	interface Props {
+		onclose: () => void;
+		/** The category to file new habits under, e.g. the one whose plus opened the form. */
+		category?: string | null;
+		/** Inside a category's card, where a card of its own would nest one in another. */
+		inline?: boolean;
+	}
+	let { onclose, category: initial = null, inline = false }: Props = $props();
 
 	let name = $state('');
 	let notes = $state('');
@@ -18,8 +26,9 @@
 	let color = $state<string>(PALETTE[0]);
 	let tracking = $state<Tracking>('binary');
 	let unit = $state('');
-	/** Kept between habits, since several in a row usually share a category. */
-	let category = $state<string | null>(null);
+	/** Kept between habits, since several in a row usually share a category. Seeded
+	 *  once: each category's plus opens a form of its own. */
+	let category = $state<string | null>(untrack(() => initial));
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
@@ -40,7 +49,7 @@
 	}
 </script>
 
-<Card>
+{#snippet fields()}
 	<form onsubmit={submit} class="space-y-4">
 		<TextField bind:value={name} placeholder="What do you want to keep doing?" required />
 
@@ -80,4 +89,10 @@
 			</div>
 		</div>
 	</form>
-</Card>
+{/snippet}
+
+{#if inline}
+	<div class="rounded-xl bg-sunken/60 p-3">{@render fields()}</div>
+{:else}
+	<Card>{@render fields()}</Card>
+{/if}

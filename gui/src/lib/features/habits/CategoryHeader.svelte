@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { FolderPlus, GripVertical, X } from '@lucide/svelte';
+	import { FolderPlus, GripVertical, Plus, X } from '@lucide/svelte';
 	import TextField from '$lib/ui/TextField.svelte';
 	import { habits } from '$lib/state/habits.svelte';
 	import type { Shelf } from '$lib/domain/categories';
@@ -9,8 +9,10 @@
 		/** Subcategories sit under a top-level category and cannot hold more of their own. */
 		nested?: boolean;
 		ongrab: () => void;
+		/** Opens the new-habit form inside this category. */
+		onadd: () => void;
 	}
-	let { shelf, nested = false, ongrab }: Props = $props();
+	let { shelf, nested = false, ongrab, onadd }: Props = $props();
 
 	let addingSub = $state(false);
 	let subName = $state('');
@@ -67,6 +69,17 @@
 	/>
 
 	<span class="shrink-0 px-1 text-[11px] text-muted tabular-nums">{count}</span>
+
+	<!-- Always shown: adding a habit is what the header is most often for. -->
+	<button
+		onclick={onadd}
+		aria-label="Add a habit to {shelf.category.name}"
+		title="Add a habit here"
+		class="grid size-7 shrink-0 place-items-center rounded-full text-muted transition
+		       hover:bg-sunken hover:text-ink"
+	>
+		<Plus size={15} strokeWidth={2} />
+	</button>
 
 	{#if !nested}
 		<button
