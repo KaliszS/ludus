@@ -31,6 +31,8 @@
 	let loose = $state.raw<Habit[]>([]);
 
 	let creating = $state(false);
+	/** The category whose plus opened a form inside it. */
+	let addingTo = $state<string | null>(null);
 	let addingCategory = $state(false);
 	let categoryName = $state('');
 
@@ -94,6 +96,8 @@
 		else dragged = true;
 	}
 
+	const toggleAdding = (id: string) => (addingTo = addingTo === id ? null : id);
+
 	async function addCategory(name: string) {
 		if (!name.trim()) return;
 		if (await habits.addCategory(name, null)) {
@@ -107,6 +111,14 @@
 
 <!-- A grip pressed and released without moving never finalizes, so let go of it here. -->
 <svelte:window onpointerup={() => !dragged && (grabbing = null)} />
+
+{#snippet addForm(id: string)}
+	{#if addingTo === id}
+		<div class="my-2 ml-5">
+			<HabitForm category={id} inline onclose={() => (addingTo = null)} />
+		</div>
+	{/if}
+{/snippet}
 
 {#snippet habitZone(id: string, items: Habit[], quiet = false)}
 	{@const open = items.length === 0 && (grabbing === 'habit' || !quiet)}
@@ -185,7 +197,12 @@
 	>
 		{#each shelves as top (top.id)}
 			<section animate:flip={{ duration: FLIP_MS }} class={card}>
-				<CategoryHeader shelf={top} ongrab={() => (grabbing = 'category')} />
+				<CategoryHeader
+					shelf={top}
+					ongrab={() => (grabbing = 'category')}
+					onadd={() => toggleAdding(top.id)}
+				/>
+				{@render addForm(top.id)}
 				{@render habitZone(top.id, top.habits, top.subs.length > 0)}
 				<div
 					class:min-h-8={grabbing === 'subcategory' && top.subs.length === 0}
@@ -195,7 +212,13 @@
 				>
 					{#each top.subs as sub (sub.id)}
 						<div animate:flip={{ duration: FLIP_MS }} class="ml-3">
-							<CategoryHeader shelf={sub} nested ongrab={() => (grabbing = 'subcategory')} />
+							<CategoryHeader
+								shelf={sub}
+								nested
+								ongrab={() => (grabbing = 'subcategory')}
+								onadd={() => toggleAdding(sub.id)}
+							/>
+							{@render addForm(sub.id)}
 							{@render habitZone(sub.id, sub.habits)}
 						</div>
 					{/each}
