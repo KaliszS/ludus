@@ -3,10 +3,12 @@ import { BASE, body, collection, request } from './http';
 import type {
 	Account,
 	AuthMethods,
+	CategoryPatch,
 	Checkin,
 	Measure,
 	Medal,
 	Habit,
+	HabitCategory,
 	HabitPatch,
 	PlanVersions,
 	NewHabit,
@@ -26,6 +28,18 @@ export const habitsApi = {
 	update: (id: string, patch: HabitPatch) =>
 		request<Habit>(`/habits/${id}`, { method: 'PATCH', body: body(patch) }),
 	remove: (id: string) => request<void>(`/habits/${id}`, { method: 'DELETE' })
+};
+
+export const categoriesApi = {
+	list: () => collection<HabitCategory>('/habit-categories'),
+	create: (name: string, parentId: string | null) =>
+		request<HabitCategory>('/habit-categories', {
+			method: 'POST',
+			body: body({ name, parent_id: parentId })
+		}),
+	update: (id: string, patch: CategoryPatch) =>
+		request<HabitCategory>(`/habit-categories/${id}`, { method: 'PATCH', body: body(patch) }),
+	remove: (id: string) => request<void>(`/habit-categories/${id}`, { method: 'DELETE' })
 };
 
 export const checkinsApi = {

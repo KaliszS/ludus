@@ -1,4 +1,5 @@
 mod auth;
+mod category;
 mod checkin;
 mod dto;
 mod extract;
@@ -59,6 +60,14 @@ fn api() -> Router<Service> {
         .route(
             "/habits/{id}",
             get(habit::show).patch(habit::update).delete(habit::remove),
+        )
+        .route(
+            "/habit-categories",
+            get(category::list).post(category::create),
+        )
+        .route(
+            "/habit-categories/{id}",
+            patch(category::update).delete(category::remove),
         )
         .route("/checkins", get(checkin::list_all))
         .route("/habits/{id}/checkins", get(checkin::list))

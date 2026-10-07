@@ -57,6 +57,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    habit_categories (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        parent_id -> Nullable<Uuid>,
+        name -> Text,
+        position -> Float8,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     habit_checkins (habit_id, day) {
         habit_id -> Uuid,
         day -> Date,
@@ -82,6 +94,7 @@ diesel::table! {
         tracking -> Text,
         position -> Float8,
         goal_id -> Nullable<Uuid>,
+        category_id -> Nullable<Uuid>,
     }
 }
 
@@ -360,8 +373,10 @@ diesel::joinable!(cycles -> teams (team_id));
 diesel::joinable!(device_authorizations -> users (user_id));
 diesel::joinable!(goals -> teams (team_id));
 diesel::joinable!(goals -> users (user_id));
+diesel::joinable!(habit_categories -> users (user_id));
 diesel::joinable!(habit_checkins -> habits (habit_id));
 diesel::joinable!(habits -> goals (goal_id));
+diesel::joinable!(habits -> habit_categories (category_id));
 diesel::joinable!(habits -> users (user_id));
 diesel::joinable!(horizons -> users (user_id));
 diesel::joinable!(labels -> teams (team_id));
@@ -403,6 +418,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     cycles,
     device_authorizations,
     goals,
+    habit_categories,
     habit_checkins,
     habits,
     horizons,

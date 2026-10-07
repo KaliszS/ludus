@@ -20,6 +20,7 @@ pub struct HabitResponse {
     unit: Option<String>,
     tracking: &'static str,
     weekdays: Vec<i16>,
+    category_id: Option<Uuid>,
     position: f64,
     archived: bool,
     created_at: DateTime<Utc>,
@@ -37,6 +38,7 @@ impl From<Habit> for HabitResponse {
             unit: habit.unit,
             tracking: habit.tracking.as_str(),
             weekdays: habit.weekdays,
+            category_id: habit.category_id,
             position: habit.position,
             archived: habit.archived_at.is_some(),
             created_at: habit.created_at,
@@ -60,6 +62,7 @@ pub struct CreateBody {
     unit: Option<String>,
     tracking: Option<String>,
     weekdays: Option<Vec<i16>>,
+    category_id: Option<Uuid>,
 }
 
 #[derive(Deserialize, Default)]
@@ -75,6 +78,8 @@ pub struct UpdateBody {
     tracking: Option<String>,
     #[serde(default, deserialize_with = "double_option")]
     weekdays: Option<Option<Vec<i16>>>,
+    #[serde(default, deserialize_with = "double_option")]
+    category_id: Option<Option<Uuid>>,
     position: Option<f64>,
     archived: Option<bool>,
 }
@@ -105,6 +110,7 @@ pub async fn create(
             unit: body.unit,
             tracking: body.tracking,
             weekdays: body.weekdays,
+            category_id: body.category_id,
         })
         .await?;
     Ok((StatusCode::CREATED, Json(habit.into())))
@@ -126,6 +132,7 @@ pub async fn update(
                 unit: body.unit,
                 tracking: body.tracking,
                 weekdays: body.weekdays,
+                category_id: body.category_id,
                 position: body.position,
                 archived: body.archived,
             },

@@ -52,6 +52,7 @@
 			aria-label={habit.tracking === 'quantity'
 				? `Set ${habit.name}`
 				: `${done ? 'Undo' : 'Check'} ${habit.name}`}
+			title={habit.description || undefined}
 			class="flex h-full items-center gap-1.5 rounded-full px-3 text-sm transition active:scale-95"
 		>
 			<span style:color={done ? accent : 'var(--color-muted)'}>

@@ -9,7 +9,7 @@ OUT="api/schema"
 PG="docker compose exec -T postgres"
 
 auth="users user_identities sessions device_authorizations oauth_states"
-habits="habits habit_checkins"
+habits="habit_categories habits habit_checkins"
 plans="plans plan_tiers plan_requirements plan_requirement_quotas plan_requirement_habits plan_tasks"
 goals="goals task_goals"
 teams="teams team_members workflow_states labels cycles"

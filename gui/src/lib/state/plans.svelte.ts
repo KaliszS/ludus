@@ -111,16 +111,9 @@ class Plans {
 		if (ok) await this.load();
 	}
 
-	/** Sets one tier's quota; an empty value skips the tier for this requirement. */
-	async setQuota(requirement: Requirement, tierId: string, raw: string) {
-		const quota = Number(raw);
-		const cleared = raw.trim() === '';
-		if (!cleared && (!Number.isFinite(quota) || quota <= 0)) return false;
-		const quotas = requirement.quotas.filter((item) => item.tier_id !== tierId);
-		if (!cleared) quotas.push({ tier_id: tierId, quota });
-		const ok = await toast.guard(() =>
-			plansApi.updateRequirement(requirement.id, { quotas }).then(() => true)
-		);
+	/** Replaces a requirement's quotas; a tier left out skips this requirement. */
+	async setQuotas(id: string, quotas: TierQuota[]) {
+		const ok = await toast.guard(() => plansApi.updateRequirement(id, { quotas }).then(() => true));
 		if (ok) await this.load();
 		return Boolean(ok);
 	}
