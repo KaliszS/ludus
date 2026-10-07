@@ -30,6 +30,21 @@ export function carriedQuota(own: (number | undefined)[], index: number): number
 	return own.slice(0, index).findLast((quota) => quota !== undefined);
 }
 
+/** A goal's per-tier quotas, lowest tier first, after one tier is set. A quota equal to
+ *  one below takes it over and that tier drops out, so a goal moves up a tier in one
+ *  step instead of tripping the rule that each tier asks for more than the last. */
+export function setTierQuota(
+	own: (number | undefined)[],
+	index: number,
+	quota: number | undefined
+): (number | undefined)[] {
+	return own.map((value, at) => {
+		if (at === index) return quota;
+		if (at < index && quota !== undefined && value === quota) return undefined;
+		return value;
+	});
+}
+
 /** The first quota still ahead, or the top one once every one is reached. */
 export function nextQuota(quotas: TierQuota[], done: number): number {
 	return (quotas.find((quota) => done < quota.quota) ?? quotas.at(-1))?.quota ?? 0;

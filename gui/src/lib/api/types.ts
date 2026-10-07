@@ -10,10 +10,25 @@ export interface Habit {
 	unit: string | null;
 	tracking: Tracking;
 	weekdays: number[];
+	category_id: string | null;
 	position: number;
 	archived: boolean;
 	created_at: string;
 	updated_at: string;
+}
+
+/** Two levels at most: a subcategory's parent is always a top-level category. */
+export interface HabitCategory {
+	id: string;
+	parent_id: string | null;
+	name: string;
+	position: number;
+}
+
+export interface CategoryPatch {
+	name?: string;
+	parent_id?: string | null;
+	position?: number;
 }
 
 export interface Checkin {
@@ -125,6 +140,7 @@ export interface NewHabit {
 	unit?: string | null;
 	tracking?: Tracking;
 	weekdays?: number[];
+	category_id?: string | null;
 }
 
 /** null clears the field, undefined leaves it alone. */

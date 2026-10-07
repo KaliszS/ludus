@@ -2,10 +2,13 @@
 	import DayPicker from '$lib/features/board/DayPicker.svelte';
 	import HabitChip from '$lib/features/board/HabitChip.svelte';
 	import PeriodCard from '$lib/features/board/PeriodCard.svelte';
+	import { groups } from '$lib/domain/categories';
 	import { fullLabel, today } from '$lib/domain/date';
 	import { board } from '$lib/state/board.svelte';
+	import { habits } from '$lib/state/habits.svelte';
 	import Card from '$lib/ui/Card.svelte';
 	import Empty from '$lib/ui/Empty.svelte';
+	import HabitGroups from '$lib/ui/HabitGroups.svelte';
 	import Skeleton from '$lib/ui/Skeleton.svelte';
 	import { swipe } from '$lib/ui/swipe';
 	import { fly } from 'svelte/transition';
@@ -43,11 +46,13 @@
 						</h2>
 
 						{#if board.active.length}
-							<ul class="mt-3 flex flex-wrap gap-1.5">
-								{#each board.active as habit (habit.id)}
-									<HabitChip {habit} />
-								{/each}
-							</ul>
+							<div class="mt-3">
+								<HabitGroups groups={groups(habits.categories, board.active)}>
+									{#snippet item(habit)}
+										<HabitChip {habit} />
+									{/snippet}
+								</HabitGroups>
+							</div>
 						{:else if board.loading}
 							<div class="mt-1"><Skeleton /></div>
 						{:else}

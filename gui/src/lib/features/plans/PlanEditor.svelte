@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Archive, History, Plus, X } from '@lucide/svelte';
+	import HabitPicker from './HabitPicker.svelte';
 	import PlanVersions from './PlanVersions.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Card from '$lib/ui/Card.svelte';
@@ -8,7 +9,7 @@
 	import Segmented from '$lib/ui/Segmented.svelte';
 	import TierMark from './TierMark.svelte';
 	import { tint } from '$lib/domain/palette';
-	import { MEDALS, carriedQuota, liveTiers, tierLabel } from '$lib/domain/plan';
+	import { MEDALS, carriedQuota, liveTiers, setTierQuota, tierLabel } from '$lib/domain/plan';
 	import { habits } from '$lib/state/habits.svelte';
 	import { plans } from '$lib/state/plans.svelte';
 	import type { Measure, Medal, Period, Plan, Requirement, Tier } from '$lib/api/types';
@@ -71,10 +72,28 @@
 		adding = false;
 	}
 
-	async function setQuota(requirement: Requirement, tier: Tier, raw: string) {
-		if (!(await plans.setQuota(requirement, tier.id, raw))) {
+	const parseQuota = (raw: string) => (raw.trim() === '' ? undefined : Number(raw));
+
+	async function setQuota(requirement: Requirement, index: number, raw: string) {
+		const quota = parseQuota(raw);
+		const own = tiers.map((tier) => quotaAt(requirement, tier));
+		const next = setTierQuota(own, index, quota);
+		const quotas = tiers.flatMap((tier, at) => {
+			const value = next[at];
+			return value === undefined ? [] : [{ tier_id: tier.id, quota: value }];
+		});
+		const valid = quota === undefined || (Number.isFinite(quota) && quota > 0);
+		if (!valid || !(await plans.setQuotas(requirement.id, quotas))) {
 			refused[requirement.id] = (refused[requirement.id] ?? 0) + 1;
 		}
+	}
+
+	/** Every tier gets an explicit draft, so a cleared lowest tier stays cleared. */
+	function setDraft(index: number, raw: string) {
+		const next = setTierQuota(draftQuotas, index, parseQuota(raw) || undefined);
+		drafts = Object.fromEntries(
+			tiers.map((tier, at) => [tier.id, at === index ? raw : String(next[at] ?? '')])
+		);
 	}
 
 	const quotaAt = (requirement: Requirement, tier: Tier) =>
@@ -267,7 +286,7 @@
 										aria-label="{tierLabel(tier, index)} quota"
 										title={look.title}
 										value={String(own[index] ?? '')}
-										onchange={(event) => setQuota(requirement, tier, event.currentTarget.value)}
+										onchange={(event) => setQuota(requirement, index, event.currentTarget.value)}
 										class={look.style}
 									/>
 								{/each}
@@ -285,24 +304,7 @@
 
 						{#if editing === requirement.id}
 							<div class="mt-2 mb-1 space-y-2 rounded-xl bg-sunken/60 p-2">
-								<div class="flex flex-wrap gap-1.5">
-									{#each habits.active as habit (habit.id)}
-										{@const on = draft.includes(habit.id)}
-										<button
-											onclick={() => (draft = flip(draft, habit.id))}
-											aria-pressed={on}
-											class="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition"
-											style:background-color={on ? tint(habit.color, '24') : 'transparent'}
-											style:color={on
-												? (habit.color ?? 'var(--color-accent)')
-												: 'var(--color-muted)'}
-											style:box-shadow={on ? 'none' : 'inset 0 0 0 1px var(--color-line)'}
-										>
-											<Icon name={habit.icon} size={13} />
-											{habit.name}
-										</button>
-									{/each}
-								</div>
+								<HabitPicker selected={draft} ontoggle={(id) => (draft = flip(draft, id))} />
 								<div class="flex justify-end gap-1">
 									<Button onclick={() => (editing = null)}>Cancel</Button>
 									<Button
@@ -322,22 +324,7 @@
 				<p class="text-[11px] text-muted">
 					One habit for a plain quota, or several to accept any mix of them.
 				</p>
-				<div class="flex flex-wrap gap-1.5">
-					{#each habits.active as habit (habit.id)}
-						{@const on = picked.includes(habit.id)}
-						<button
-							onclick={() => (picked = flip(picked, habit.id))}
-							aria-pressed={on}
-							class="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition"
-							style:background-color={on ? tint(habit.color, '24') : 'transparent'}
-							style:color={on ? (habit.color ?? 'var(--color-accent)') : 'var(--color-muted)'}
-							style:box-shadow={on ? 'none' : 'inset 0 0 0 1px var(--color-line)'}
-						>
-							<Icon name={habit.icon} size={13} />
-							{habit.name}
-						</button>
-					{/each}
-				</div>
+				<HabitPicker selected={picked} ontoggle={(id) => (picked = flip(picked, id))} />
 
 				<!-- The quotas sit in the same columns as the table above. -->
 				<div class="grid items-center gap-x-1.5" style:grid-template-columns={columns}>
@@ -361,7 +348,7 @@
 							aria-label="{tierLabel(tier, index)} quota"
 							title={look.title}
 							value={draftFor(tier, index)}
-							onchange={(event) => (drafts[tier.id] = event.currentTarget.value)}
+							onchange={(event) => setDraft(index, event.currentTarget.value)}
 							class={look.style}
 						/>
 					{/each}

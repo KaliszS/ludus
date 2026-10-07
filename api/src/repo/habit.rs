@@ -23,6 +23,7 @@ pub struct HabitRow {
     pub unit: Option<String>,
     pub tracking: String,
     pub position: f64,
+    pub category_id: Option<Uuid>,
 }
 
 impl From<HabitRow> for Habit {
@@ -41,6 +42,7 @@ impl From<HabitRow> for Habit {
                 .into_iter()
                 .flatten()
                 .collect(),
+            category_id: row.category_id,
             position: row.position,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -61,6 +63,7 @@ pub struct NewHabit {
     pub unit: Option<String>,
     pub tracking: String,
     pub weekdays: Option<Vec<Option<i16>>>,
+    pub category_id: Option<Uuid>,
     pub position: f64,
 }
 
@@ -74,6 +77,7 @@ pub struct HabitChanges {
     pub unit: Option<Option<String>>,
     pub tracking: Option<String>,
     pub weekdays: Option<Option<Vec<Option<i16>>>>,
+    pub category_id: Option<Option<Uuid>>,
     pub position: Option<f64>,
     pub archived_at: Option<Option<DateTime<Utc>>>,
 }
@@ -87,6 +91,7 @@ impl HabitChanges {
             && self.unit.is_none()
             && self.tracking.is_none()
             && self.weekdays.is_none()
+            && self.category_id.is_none()
             && self.position.is_none()
             && self.archived_at.is_none()
     }

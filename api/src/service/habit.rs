@@ -1,6 +1,7 @@
 use chrono::Utc;
 use uuid::Uuid;
 
+use super::category::checked_category;
 use super::{UserService, check_weekdays, parse_tracking, require_name};
 use crate::domain::{Habit, Tracking};
 use crate::error::{AppError, AppResult};
@@ -16,6 +17,7 @@ pub struct CreateHabit {
     pub unit: Option<String>,
     pub tracking: Option<String>,
     pub weekdays: Option<Vec<i16>>,
+    pub category_id: Option<Uuid>,
 }
 
 /// Outer Option means "absent"; inner means "set to null".
@@ -28,6 +30,7 @@ pub struct UpdateHabit {
     pub unit: Option<Option<String>>,
     pub tracking: Option<String>,
     pub weekdays: Option<Option<Vec<i16>>>,
+    pub category_id: Option<Option<Uuid>>,
     pub position: Option<f64>,
     pub archived: Option<bool>,
 }
@@ -63,6 +66,10 @@ impl UserService {
         let user_id = self.user_id;
         let mut conn = self.conn().await?;
         let position = habit::next_position(&mut conn, user_id).await?;
+        let category_id = match input.category_id {
+            Some(id) => Some(checked_category(&mut conn, user_id, id).await?),
+            None => None,
+        };
 
         habit::insert(
             &mut conn,
@@ -76,6 +83,7 @@ impl UserService {
                 unit: input.unit,
                 tracking: tracking.as_str().to_owned(),
                 weekdays: to_column(weekdays),
+                category_id,
                 position,
             },
         )
@@ -94,6 +102,9 @@ impl UserService {
         }
 
         let mut conn = self.conn().await?;
+        if let Some(Some(category_id)) = input.category_id {
+            checked_category(&mut conn, self.user_id, category_id).await?;
+        }
         // A binary check-in is stored as times = 1, which reads the same as a quantity
         // of one, so that direction keeps history intact. The reverse would have to
         // squash every recorded amount down to 1.
@@ -114,6 +125,7 @@ impl UserService {
             unit: input.unit,
             tracking: tracking.map(|t| t.as_str().to_owned()),
             weekdays: input.weekdays.map(|days| days.and_then(to_column)),
+            category_id: input.category_id,
             position: input.position,
             archived_at: input.archived.map(|on| on.then(Utc::now)),
         };

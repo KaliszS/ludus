@@ -34,8 +34,18 @@ pub struct Habit {
     pub unit: Option<String>,
     pub tracking: Tracking,
     pub weekdays: Vec<i16>,
+    pub category_id: Option<Uuid>,
     pub position: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,
+}
+
+/// A top-level category has no parent; a subcategory's parent is always top-level.
+#[derive(Debug, Clone)]
+pub struct HabitCategory {
+    pub id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub name: String,
+    pub position: f64,
 }

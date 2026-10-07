@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod auth;
+pub mod category;
 pub mod checkin;
 pub mod habit;
 pub mod password;
